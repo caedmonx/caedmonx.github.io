@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://caedmonx.github.io/</id>
     <title>Caedmon&apos;s Blog</title>
-    <updated>2020-03-07T10:33:28.972Z</updated>
+    <updated>2020-03-08T10:46:55.359Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://caedmonx.github.io/"/>
     <link rel="self" href="https://caedmonx.github.io/atom.xml"/>
@@ -10,6 +10,63 @@
     <logo>https://caedmonx.github.io/images/avatar.png</logo>
     <icon>https://caedmonx.github.io/favicon.ico</icon>
     <rights>All rights reserved 2020, Caedmon&apos;s Blog</rights>
+    <entry>
+        <title type="html"><![CDATA[设计一个数据库连接池]]></title>
+        <id>https://caedmonx.github.io/post/she-ji-yi-ge-shu-ju-ku-lian-jie-chi/</id>
+        <link href="https://caedmonx.github.io/post/she-ji-yi-ge-shu-ju-ku-lian-jie-chi/">
+        </link>
+        <updated>2020-03-08T10:45:07.000Z</updated>
+        <content type="html"><![CDATA[<h1 id="设计一个数据库连接池">设计一个数据库连接池</h1>
+<h2 id="11-功能设计">1.1 功能设计</h2>
+<ol>
+<li>连接池不与具体的数据库耦合，应具备通用性</li>
+<li>连接池中的连接对象的数量可配置</li>
+<li>提供接口，接入对具体数据库的连接功能</li>
+</ol>
+<h2 id="12-实现思路">1.2 实现思路</h2>
+<p>连接池是一个抽象出来的包含多个数据库连接对象的“集合”，这个“集合”不仅保存着一定数量的连接对象，并且还具备对连接对象的管理功能，这些管理功能主要用以保证连接池的可配置性和高可用性。</p>
+<p>每个数据库连接对象对应一个线程，多个连接对象则相应的需要多个线程，因此数据库连接池一定是基于多线程技术的。为了高效，需要使用线程池来解决连接对象的创建问题。</p>
+<p>为实现连接池不与具体的数据库耦合这一目标，应该设计一个连接对象的接口，将具体的连接对象生成逻辑交由接口的实现类去解决。</p>
+<p>连接池要提供一定的可配置项，让用户可根据自身的情况来进行合理的配置，因此可以抽象出一个配置类的对象，用来提供配置功能。</p>
+<h2 id="13-代码实现">1.3 代码实现</h2>
+<p>编程语言使用 rust 。</p>
+<p>根据上节梳理的实现思路，先定义一个连接池对象，该对象包括了若干成员对象，如下：</p>
+<pre><code class="language-rust">struct SharedPool&lt;M&gt;  where  M: ManageConnection {
+  config: Config&lt;M::Connection, M::Error&gt;,
+  manager: M,
+  internals: Mutex&lt;PoolInternals&lt;M::Connection&gt;&gt;,
+  cond: Condvar,
+}
+</code></pre>
+<h3 id="131-config-对象的设计">1.3.1 Config 对象的设计</h3>
+<p>Config 对象用来提供可配置项。具体代码如下：</p>
+<pre><code class="language-rust">pub struct Config&lt;C, E&gt; {
+  // 最大连接数量
+  pub max_size: u32,
+  // 最小闲置连接数量
+  pub min_idle: Option&lt;u32&gt;,
+  // 
+  pub test_on_check_out: bool,
+  // 最大生命周期
+  pub max_lifetime: Option&lt;Duration&gt;,
+  // 闲置超时时长
+  pub idle_timeout: Option&lt;Duration&gt;,
+  // 建立连接的超时时长 
+  pub connection_timeout: Duration,
+  // 错误处理器
+  pub error_handler: Box&lt;dyn HandleError&lt;E&gt;&gt;,
+  // 事件处理器
+  pub event_handler: Box&lt;dyn HandleEvent&gt;,
+  // 自定义连接项
+  pub connection_customizer: Box&lt;dyn CustomizeConnection&lt;C, E&gt;&gt;,
+  //  线程池
+  pub thread_pool: Arc&lt;ScheduledThreadPool&gt;,
+}
+</code></pre>
+<h3 id="132-线程池">1.3.2 线程池</h3>
+<p>rust 的第三方库中有比标准库提供的线程池更高性能、更多功能的线程池，因此，我们选择使用 <a href="https://docs.rs/scheduled-thread-pool/0.2.3/scheduled_thread_pool/">scheduled_thread_pool</a> 。</p>
+]]></content>
+    </entry>
     <entry>
         <title type="html"><![CDATA[rust 笔记]]></title>
         <id>https://caedmonx.github.io/post/rust-bi-ji/</id>
