@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://caedmonx.github.io/</id>
     <title>Caedmon&apos;s Blog</title>
-    <updated>2020-03-08T11:13:44.229Z</updated>
+    <updated>2020-03-08T15:03:31.619Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://caedmonx.github.io/"/>
     <link rel="self" href="https://caedmonx.github.io/atom.xml"/>
@@ -17,40 +17,42 @@
         </link>
         <updated>2020-03-08T10:45:07.000Z</updated>
         <summary type="html"><![CDATA[<!-- more -->
-<p>数据库连接池是我们经常在用的，了解它的实现原理对我们来说至关重要，本篇文章就来分析分析，通过自己动手实现一个连接池来加深对它的理解。</p>
+<p>在操作数据库时，如果每次都建立一个新的数据库连接，效率是十分低下的，所以一般都会使用数据库连接池。本篇通过 r2d2 这个通用连接池的源码来学习如何实现一个连接池。</p>
 ]]></summary>
         <content type="html"><![CDATA[<!-- more -->
-<p>数据库连接池是我们经常在用的，了解它的实现原理对我们来说至关重要，本篇文章就来分析分析，通过自己动手实现一个连接池来加深对它的理解。</p>
+<p>在操作数据库时，如果每次都建立一个新的数据库连接，效率是十分低下的，所以一般都会使用数据库连接池。本篇通过 r2d2 这个通用连接池的源码来学习如何实现一个连接池。</p>
 <!-- more -->
-<h2 id="11-功能设计">1.1 功能设计</h2>
+<h2 id="1-功能设计">1 功能设计</h2>
 <ol>
 <li>连接池不与具体的数据库耦合，应具备通用性</li>
-<li>连接池中的连接对象的数量可配置</li>
+<li>连接池应具备可配置性</li>
 <li>提供接口，接入对具体数据库的连接功能</li>
 </ol>
-<h2 id="12-实现思路">1.2 实现思路</h2>
+<h2 id="2-实现思路">2 实现思路</h2>
 <p>连接池是一个抽象出来的包含多个数据库连接对象的“集合”，这个“集合”不仅保存着一定数量的连接对象，并且还具备对连接对象的管理功能，这些管理功能主要用以保证连接池的可配置性和高可用性。</p>
 <p>每个数据库连接对象对应一个线程，多个连接对象则相应的需要多个线程，因此数据库连接池一定是基于多线程技术的。为了高效，需要使用线程池来解决连接对象的创建问题。</p>
 <p>为实现连接池不与具体的数据库耦合这一目标，应该设计一个连接对象的接口，将具体的连接对象生成逻辑交由接口的实现类去解决。</p>
 <p>连接池要提供一定的可配置项，让用户可根据自身的情况来进行合理的配置，因此可以抽象出一个配置类的对象，用来提供配置功能。</p>
-<h2 id="13-代码实现">1.3 代码实现</h2>
-<p>编程语言使用 rust 。</p>
+<h2 id="3-代码实现">3 代码实现</h2>
 <p>根据上节梳理的实现思路，先定义一个连接池对象，该对象包括了若干成员对象，如下：</p>
-<pre><code class="language-rust">struct SharedPool&lt;M&gt;  where  M: ManageConnection {
+<pre><code class="language-rust">// SharedPool 为内部使用的池对象
+struct SharedPool&lt;M&gt;  where  M: ManageConnection {
   config: Config&lt;M::Connection, M::Error&gt;,
   manager: M,
   internals: Mutex&lt;PoolInternals&lt;M::Connection&gt;&gt;,
   cond: Condvar,
 }
+// Pool 为外部可引用的池对象
+pub struct Pool&lt;M&gt;(Arc&lt;SharedPool&lt;M&gt;&gt;) where M: ManageConnection;
 </code></pre>
-<h3 id="131-config-对象的设计">1.3.1 Config 对象的设计</h3>
+<h3 id="31-config-对象的设计">3.1 Config 对象的设计</h3>
 <p>Config 对象用来提供可配置项。具体代码如下：</p>
 <pre><code class="language-rust">pub struct Config&lt;C, E&gt; {
   // 最大连接数量
   pub max_size: u32,
   // 最小闲置连接数量
   pub min_idle: Option&lt;u32&gt;,
-  // 
+  // 如果设置为 true，每次从池中取一个连接时将做一下测试，看看连接是否能够正常使用
   pub test_on_check_out: bool,
   // 最大生命周期
   pub max_lifetime: Option&lt;Duration&gt;,
@@ -64,12 +66,263 @@
   pub event_handler: Box&lt;dyn HandleEvent&gt;,
   // 自定义连接项
   pub connection_customizer: Box&lt;dyn CustomizeConnection&lt;C, E&gt;&gt;,
-  //  线程池
+  // 线程池
   pub thread_pool: Arc&lt;ScheduledThreadPool&gt;,
 }
 </code></pre>
-<h3 id="132-线程池">1.3.2 线程池</h3>
+<h3 id="32-线程池">3.2 线程池</h3>
 <p>rust 的第三方库中有比标准库提供的线程池更高性能、更多功能的线程池，因此，我们选择使用 <a href="https://docs.rs/scheduled-thread-pool/0.2.3/scheduled_thread_pool/">scheduled_thread_pool</a> 。</p>
+<h3 id="33-连接池中的连接对象">3.3 连接池中的连接对象</h3>
+<p>设计良好的连接池具备对数据库连接对象的管理能力，要有效管理数据库连接对象，则需要记录数据库连接对象的若干状态，因此，定义如下连接池中的连接对象，其中泛型 C 用以指代一个具体的数据库连接对象。</p>
+<pre><code class="language-rust">struct Conn&lt;C&gt; {
+  conn: C,
+  extensions: Extensions,
+  birth: Instant,
+  id: u64,
+}
+</code></pre>
+<p>因为要对闲置的连接对象进行管理，所以可再定义一个闲置连接对象：</p>
+<pre><code class="language-rust">struct IdleConn&lt;C&gt; {
+  conn: Conn&lt;C&gt;,
+  idle_start: Instant,
+}
+</code></pre>
+<h3 id="34-抽象数据库连接对象">3.4 抽象数据库连接对象</h3>
+<p>在 Conn 对象的定义中我们使用了泛型来指代一个具体的数据库连接对象的类型，这个泛型代表的是一个用户自定义的数据库连接对象类型，而这个类型肯定需要遵循一定的接口规范，因此，我们需要将这个接口定义出来。具体代码如下：</p>
+<pre><code class="language-rust">pub trait ManageConnection: Send + Sync + 'static {
+  type Connection: Send + 'static;
+  type Error: error::Error + 'static;
+  fn connect(&amp;self) -&gt; Result&lt;Self::Connection, Self::Error&gt;;
+  fn is_valid(&amp;self, conn: &amp;mut Self::Connection) -&gt; Result&lt;(), Self::Error&gt;;
+  fn has_broken(&amp;self, conn: &amp;mut Self::Connection) -&gt; bool;
+}
+</code></pre>
+<h2 id="4-初始化方式设计">4 初始化方式设计</h2>
+<p>先思考一下如何让使用者能够简单且优雅的来使用这个连接池。</p>
+<p>用户只需要自定义一个实现了<code>ManageConnection</code>的类型并将其实例化，然后调用我们提供的一个初始化连接池的方法即可！</p>
+<p>类似的代码如下：</p>
+<pre><code class="language-rust">fn main() {
+  let manager = FooConnectionManager::new(&quot;localhost:3306&quot;);
+  let pool = Pool::builder()
+  	.max_size(15)
+  	.build(manager)
+  	.unwrap();
+}
+</code></pre>
+<h2 id="5-初始化连接池">5 初始化连接池</h2>
+<p>初始化连接池即是要创建出一个 Pool 结构体的实例出来，因连接池的属性不少，所以采用建造者模式。</p>
+<pre><code class="language-rust">impl&lt;M&gt; Pool&lt;M&gt; where M: ManageConnection {
+  pub fn builder() -&gt; Builder&lt;M&gt; {
+    Builder::new()
+  }
+}
+
+pub struct Builder&lt;M: ManageConnection&gt; {
+  max_size: u32,
+  min_idle: Option&lt;u32&gt;,
+  test_on_check_out: bool,
+  max_lifetime: Option&lt;Duration&gt;,
+  idle_timeout: Option&lt;Duration&gt;,
+  connection_timeout: Duration,
+  error_handler: Box&lt;dyn HandleError&lt;M::Error&gt;&gt;,
+  connection_customizer: Box&lt;dyn CustomizeConnection&lt;M::Connection, M::Error&gt;&gt;,
+  event_handler: Box&lt;dyn HandleEvent&gt;,
+  thread_pool: Option&lt;Arc&lt;ScheduledThreadPool&gt;&gt;,
+  reaper_rate: Duration,
+  _p: PhantomData&lt;M&gt;,
+}
+
+impl&lt;M: ManagerConnection&gt; Builder&lt;M&gt; {
+  pub fn new() -&gt; Builder&lt;M&gt; {
+    Builder::default()
+  }
+}
+
+impl&lt;M: ManageConnection&gt; Default for Builder&lt;M&gt; {
+  fn default() -&gt; Builder&lt;M&gt; {
+    Builder {
+      max_size: 10,
+      min_idle: None,
+      test_on_check_out: true,
+      idle_timeout: Some(Duration::from_secs(10 * 60)),
+      max_lifetime: Some(Duration::from_secs(30 * 60)),
+      connection_timeout: Duration::from_secs(30),
+      error_handler: Box::new(LoggingErrorHandler),
+      event_handler: Box::new(NopEventHandler),
+      connection_customizer: Box::new(NopConnectionCustomizer),
+      thread_pool: None,
+      reaper_rate: Duration::from_secs(30),
+      _p: PhantomData,
+    }
+  }
+}
+</code></pre>
+<p>初始化过程核心代码如下：</p>
+<pre><code class="language-rust">pub fn build(self, manager: M) -&gt; Result&lt;Pool&lt;M&gt;, Error&gt; {
+  let pool = self.build_unchecked(manager);
+  pool.wait_for_initialization()?;
+  Ok(pool)
+}
+
+pub fn build_unchecked(self, manager: M) -&gt; Pool&lt;M&gt; {
+  if let Some(min_idle) = self.min_idle {
+    assert!(self.max_size &gt;= min_idle, &quot;min_idle must be no larger than max_size&quot;);
+  }
+  let thread_pool = match self.thread_pool {
+    Some(thread_pool) =&gt; thread_pool,
+    None =&gt; Arc::new(ScheduledThreadPool::with_name(&quot;r2d2-worker-{}&quot;, 3));
+  }
+  let config = Config {
+    max_size: self.max_size,
+    min_idle: self.min_idle,
+    test_on_check_out: self.test_on_check_out,
+    max_lifetime: self.max_lifetime,
+    idle_timeout: self.idle_timeout,
+    connection_timeout: self.connection_timeout,
+    error_handler: self.error_handler,
+    event_handler: self.event_handler,
+    connection_customizer: self.connection_customizer,
+    thread_pool,
+  };
+  Pool::new_inner(config, manager, self.reaper_rate)
+}
+
+fn new_inner(config: Config&lt;M::Connection, M::Error&gt;, manager: M, reaper_rate: Duration) -&gt; Pool&lt;M&gt; {
+  let internals = PoolInternals {
+    conns: Vec::with_capacity(config.max_size as usize),
+    num_conns: 0,
+    pending_conns: 0,
+    last_error: None,
+  };
+  let shared =  Arc::new(SharedPool {
+    config,
+    manager,
+    internals: Mutex::new(internals),
+    cond: Condvar::new(),
+  });
+  
+  establish_idle_connections(&amp;shared, &amp;mut shared.internals.lock());
+  
+  if shared.config.max_lifetime.is_some() || shared.config.idle_timeout.is_some() {
+    let s = Arc::downgrade(&amp;shared);
+    shared
+    	.config
+    	.thread_pool
+    	.execute_at_fixed_rate(reaper_rate, reaper_rate,
+    		move || reap_connections(&amp;s));
+  }
+  
+  Pool(shared)
+}
+
+fn establish_idle_connections&lt;M&gt;(shared: &amp;Arc&lt;SharedPool&lt;M&gt;&gt;, internals: &amp;mut PoolInternals&lt;M::Connection&gt;) where M: ManageConnection {
+  let min = shared.config.min_idle.unwrap_or(shared.config.max_size);
+  let idle = internals.conns.len() as u32;
+  for _ in idle..min {
+    add_connection(shared, internals);
+  }
+}
+
+// 给 shared 添加连接
+fn add_connection&lt;M&gt;(shared: &amp;Arc&lt;SharedPool&lt;M&gt;&gt;, internals: &amp;mut PoolInternals&lt;M::Connection&gt;)
+where M: ManageConnection {
+    if internals.num_conns + internals.pending_conns &gt;= shared.config.max_size {
+        return;
+    }
+
+    internals.pending_conns += 1;
+    inner(Duration::from_secs(0), shared);
+
+    fn inner&lt;M&gt;(delay: Duration, shared: &amp;Arc&lt;SharedPool&lt;M&gt;&gt;) where M: ManageConnection {
+        let new_shared = Arc::downgrade(shared);
+        shared.config.thread_pool.execute_after(delay, move || {
+           let shared = match new_shared.upgrade() {
+               Some(shared) =&gt; shared,
+               None =&gt; return,
+           };
+
+            // 当建立新的连接时，调用 connection_customizer 对象的 on_qcquire()
+            let conn = shared.manager.connect().and_then(|mut conn| {
+               shared
+                   .config
+                   .connection_customizer
+                   .on_acquire(&amp;mut conn)
+                   .map(|_| conn)
+            });
+
+            match conn {
+                // 连接创建成功后将其设置到 shared 中
+                Ok(conn) =&gt; {
+                    let id = CONNECTION_ID.fetch_add(1, Ordering::Relaxed) as u64;
+                    let event = AcquireEvent { id };
+                    shared.config.event_handler.handle_acquire(event);
+
+                    let mut internals = shared.internals.lock();
+                    internals.last_error = None;
+                    let now = Instant::now();
+                    // 新创建出来的连接对象一定是闲置的连接对象
+                    let conn = IdleConn {
+                        conn: Conn {
+                            conn,
+                            extensions: Extensions::new(),
+                            birth: now,
+                            id,
+                        },
+                        idle_start: now,
+                    };
+                    internals.conns.push(conn);
+                    internals.pending_conns -= 1;
+                    internals.num_conns += 1;
+                    shared.cond.notify_one();
+                }
+
+                // 创建连接失败的话，则经过一定延迟时间后递归的重新获取连接
+                Err(err) =&gt; {
+                    shared.internals.lock().last_error = Some(err.to_string());
+                    shared.config.error_handler.handle_error(err);
+                    let delay = cmp::max(Duration::from_millis(200), delay);
+                    let delay = cmp::min(shared.config.connection_timeout / 2, delay * 2);
+                    inner(delay, &amp;shared);
+                }
+            }
+        });
+    }
+}
+
+// 梳理 SharedPool 中的连接对象，清除过期的或者超时的连接对象，然后创建新的空闲连接对象
+fn reap_connections&lt;M&gt;(shared: &amp;Weak&lt;SharedPool&lt;M&gt;&gt;) where M: ManageConnection {
+    let shared = match shared.upgrade() {
+        Some(shared) =&gt; shared,
+        None =&gt; return,
+    };
+
+    let mut old = Vec::with_capacity(shared.config.max_size as usize);
+    let mut to_drop = vec![];
+
+    // 删除 internals 中的连接对象时需要将 internals 锁定
+    let mut internals = shared.internals.lock();
+    // 在两个可变位置交换值，而不用对其中一个进行初始化。
+    // 将 internals 里面的 conns 替换为一个空 vec，将原来的 internals 里面的 conns 按照 reap 值分组，
+    // 分别放入不同的 vec。最后删除待删除的 conns
+    mem::swap(&amp;mut old, &amp;mut internals.conns);
+    let now = Instant::now();
+    for conn in old {
+        let mut reap = false;
+        if let Some(timeout) = shared.config.idle_timeout {
+            reap |= now - conn.idle_start &gt;= timeout;
+        }
+        if let Some(lifetime) = shared.config.max_lifetime {
+            reap |= now - conn.conn.birth &gt;= lifetime;
+        }
+        if reap {
+            to_drop.push(conn.conn);
+        } else {
+            internals.conns.push(conn);
+        }
+    }
+    drop_conns(&amp;shared, internals, to_drop);
+}
+</code></pre>
 ]]></content>
     </entry>
     <entry>
