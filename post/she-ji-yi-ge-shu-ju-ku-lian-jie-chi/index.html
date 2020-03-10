@@ -4,7 +4,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Caedmon&#39;s Blog</title>
 <meta name="description" content="欢迎浏览我的博客" />
-<link rel="shortcut icon" href="https://caedmonx.github.io//favicon.ico?v=1583679806331">
+<link rel="shortcut icon" href="https://caedmonx.github.io//favicon.ico?v=1583811740350">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
 <link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
@@ -23,7 +23,7 @@
       <div class="flex lg:block p-4 lg:px-0 items-center fixed lg:static lg:block top-0 right-0 left-0 bg-white z-50">
         <i class="ri-menu-2-line lg:mt-4 text-2xl cursor-pointer animated fadeIn" onclick="openMenu()"></i>
         <a href="https://caedmonx.github.io/">
-          <img class="animated fadeInLeft avatar rounded-lg mx-4 lg:mt-32 lg:mx-0 mt-0 lg:w-24 lg:h-24 w-12 w-12" src="https://caedmonx.github.io//images/avatar.png?v=1583679806331" alt="">
+          <img class="animated fadeInLeft avatar rounded-lg mx-4 lg:mt-32 lg:mx-0 mt-0 lg:w-24 lg:h-24 w-12 w-12" src="https://caedmonx.github.io//images/avatar.png?v=1583811740350" alt="">
         </a>
         <h1 class="animated fadeInLeft lg:text-4xl font-extrabold lg:mt-8 mt-0 text-xl" style="animation-delay: 0.2s">Caedmon&#39;s Blog</h1>
       </div>
@@ -34,10 +34,10 @@
           </p>
           <div class="toc-container hidden lg:block">
             <ul class="markdownIt-TOC">
-<li>
+<li><a href="#%E8%AE%BE%E8%AE%A1%E4%B8%80%E4%B8%AA%E6%95%B0%E6%8D%AE%E5%BA%93%E8%BF%9E%E6%8E%A5%E6%B1%A0">设计一个数据库连接池</a>
 <ul>
 <li><a href="#1-%E5%8A%9F%E8%83%BD%E8%AE%BE%E8%AE%A1">1 功能设计</a></li>
-<li><a href="#2-%E5%AE%9E%E7%8E%B0%E6%80%9D%E8%B7%AF">2 实现思路</a></li>
+<li><a href="#2-%E6%8A%BD%E8%B1%A1%E8%AE%BE%E8%AE%A1">2 抽象设计</a></li>
 <li><a href="#3-%E4%BB%A3%E7%A0%81%E5%AE%9E%E7%8E%B0">3 代码实现</a>
 <ul>
 <li><a href="#31-config-%E5%AF%B9%E8%B1%A1%E7%9A%84%E8%AE%BE%E8%AE%A1">3.1 Config 对象的设计</a></li>
@@ -48,6 +48,7 @@
 </li>
 <li><a href="#4-%E5%88%9D%E5%A7%8B%E5%8C%96%E6%96%B9%E5%BC%8F%E8%AE%BE%E8%AE%A1">4 初始化方式设计</a></li>
 <li><a href="#5-%E5%88%9D%E5%A7%8B%E5%8C%96%E8%BF%9E%E6%8E%A5%E6%B1%A0">5 初始化连接池</a></li>
+<li><a href="#6-%E6%80%BB%E7%BB%93">6 总结</a></li>
 </ul>
 </li>
 </ul>
@@ -98,7 +99,7 @@
       <div class="content-wrapper py-32 lg:p-8 lg:w-3/4 post-detail animated fadeIn">
         <h1 class="text-3xl font-bold lg:mt-16">设计一个数据库连接池 </h1>
         <div class="text-sm text-gray-700 lg:my-8">
-          2020-03-08 / 11 min read
+          2020-03-08 / 12 min read
         </div>
         
           <img class="post-feature-image rounded-lg mx-auto my-4" src="https://caedmonx.github.io//post-images/she-ji-yi-ge-shu-ju-ku-lian-jie-chi.jpg" alt="">
@@ -107,25 +108,27 @@
           <!-- more -->
 <p>在操作数据库时，如果每次都建立一个新的数据库连接，效率是十分低下的，所以一般都会使用数据库连接池。本篇通过 r2d2 这个通用连接池的源码来学习如何实现一个连接池。</p>
 <!-- more -->
+<h1 id="设计一个数据库连接池">设计一个数据库连接池</h1>
+<p>在操作数据库时，如果每次都建立一个新的数据库连接，效率是十分低下的，所以一般都会使用数据库连接池。本篇结合 r2d2 这个通用连接池的源码来学习如何实现一个连接池。</p>
 <h2 id="1-功能设计">1 功能设计</h2>
 <ol>
 <li>连接池不与具体的数据库耦合，应具备通用性</li>
 <li>连接池应具备可配置性</li>
-<li>提供接口，接入对具体数据库的连接功能</li>
+<li>连接池需具备管理数据库连接对象的功能，如控制闲置数据库连接对象的数量、清理超过生命周期的数据库连接对象等</li>
 </ol>
-<h2 id="2-实现思路">2 实现思路</h2>
-<p>连接池是一个抽象出来的包含多个数据库连接对象的“集合”，这个“集合”不仅保存着一定数量的连接对象，并且还具备对连接对象的管理功能，这些管理功能主要用以保证连接池的可配置性和高可用性。</p>
-<p>每个数据库连接对象对应一个线程，多个连接对象则相应的需要多个线程，因此数据库连接池一定是基于多线程技术的。为了高效，需要使用线程池来解决连接对象的创建问题。</p>
-<p>为实现连接池不与具体的数据库耦合这一目标，应该设计一个连接对象的接口，将具体的连接对象生成逻辑交由接口的实现类去解决。</p>
+<h2 id="2-抽象设计">2 抽象设计</h2>
+<p>连接池是一个抽象出来的包含多个连接对象的“集合”，这个“集合”不仅保存着一定数量的连接对象，还存储着连接对象相关的若干状态信息，以便对连接对象其进行管理。因此，可以抽象出一个连接池对象。</p>
 <p>连接池要提供一定的可配置项，让用户可根据自身的情况来进行合理的配置，因此可以抽象出一个配置类的对象，用来提供配置功能。</p>
+<p>每个连接对象对应一个线程，多个连接对象则相应的需要多个线程，数据库连接池一定是基于多线程技术的。为了高效，需要使用线程池来解决连接对象的创建问题。</p>
+<p>为实现连接池不与具体的数据库耦合这一目标，应该对数据库连接对象进行抽象设计，将具体的数据库连接对象逻辑交由用户自行实现。</p>
 <h2 id="3-代码实现">3 代码实现</h2>
-<p>根据上节梳理的实现思路，先定义一个连接池对象，该对象包括了若干成员对象，如下：</p>
+<p>根据上节的抽象设计，先定义一个连接池对象，该对象包括了若干成员对象，如下：</p>
 <pre><code class="language-rust">// SharedPool 为内部使用的池对象
-struct SharedPool&lt;M&gt;  where  M: ManageConnection {
-  config: Config&lt;M::Connection, M::Error&gt;,
-  manager: M,
-  internals: Mutex&lt;PoolInternals&lt;M::Connection&gt;&gt;,
-  cond: Condvar,
+struct SharedPool&lt;M&gt; where M: ManageConnection {
+    config: Config&lt;M::Connection, M::Error&gt;,
+    manager: M,
+    internals: Mutex&lt;PoolInternals&lt;M::Connection&gt;&gt;,
+    cond: Condvar,
 }
 // Pool 为外部可引用的池对象
 pub struct Pool&lt;M&gt;(Arc&lt;SharedPool&lt;M&gt;&gt;) where M: ManageConnection;
@@ -133,26 +136,26 @@ pub struct Pool&lt;M&gt;(Arc&lt;SharedPool&lt;M&gt;&gt;) where M: ManageConnecti
 <h3 id="31-config-对象的设计">3.1 Config 对象的设计</h3>
 <p>Config 对象用来提供可配置项。具体代码如下：</p>
 <pre><code class="language-rust">pub struct Config&lt;C, E&gt; {
-  // 最大连接数量
-  pub max_size: u32,
-  // 最小闲置连接数量
-  pub min_idle: Option&lt;u32&gt;,
-  // 如果设置为 true，每次从池中取一个连接时将做一下测试，看看连接是否能够正常使用
-  pub test_on_check_out: bool,
-  // 最大生命周期
-  pub max_lifetime: Option&lt;Duration&gt;,
-  // 闲置超时时长
-  pub idle_timeout: Option&lt;Duration&gt;,
-  // 建立连接的超时时长 
-  pub connection_timeout: Duration,
-  // 错误处理器
-  pub error_handler: Box&lt;dyn HandleError&lt;E&gt;&gt;,
-  // 事件处理器
-  pub event_handler: Box&lt;dyn HandleEvent&gt;,
-  // 自定义连接项
-  pub connection_customizer: Box&lt;dyn CustomizeConnection&lt;C, E&gt;&gt;,
-  // 线程池
-  pub thread_pool: Arc&lt;ScheduledThreadPool&gt;,
+    // 最大连接数量
+    pub max_size: u32,
+    // 最小闲置连接数量
+    pub min_idle: Option&lt;u32&gt;,
+    // 如果设置为 true，每次从池中取一个连接时将做一下测试，看看连接是否能够正常使用
+    pub test_on_check_out: bool,
+    // 最大生命周期
+    pub max_lifetime: Option&lt;Duration&gt;,
+    // 闲置超时时长
+    pub idle_timeout: Option&lt;Duration&gt;,
+    // 建立连接的超时时长 
+    pub connection_timeout: Duration,
+    // 错误处理器
+    pub error_handler: Box&lt;dyn HandleError&lt;E&gt;&gt;,
+    // 事件处理器
+    pub event_handler: Box&lt;dyn HandleEvent&gt;,
+    // 自定义连接项
+    pub connection_customizer: Box&lt;dyn CustomizeConnection&lt;C, E&gt;&gt;,
+    // 线程池
+    pub thread_pool: Arc&lt;ScheduledThreadPool&gt;,
 }
 </code></pre>
 <h3 id="32-线程池">3.2 线程池</h3>
@@ -160,26 +163,26 @@ pub struct Pool&lt;M&gt;(Arc&lt;SharedPool&lt;M&gt;&gt;) where M: ManageConnecti
 <h3 id="33-连接池中的连接对象">3.3 连接池中的连接对象</h3>
 <p>设计良好的连接池具备对数据库连接对象的管理能力，要有效管理数据库连接对象，则需要记录数据库连接对象的若干状态，因此，定义如下连接池中的连接对象，其中泛型 C 用以指代一个具体的数据库连接对象。</p>
 <pre><code class="language-rust">struct Conn&lt;C&gt; {
-  conn: C,
-  extensions: Extensions,
-  birth: Instant,
-  id: u64,
+    conn: C,
+    extensions: Extensions,
+    birth: Instant,
+    id: u64,
 }
 </code></pre>
 <p>因为要对闲置的连接对象进行管理，所以可再定义一个闲置连接对象：</p>
 <pre><code class="language-rust">struct IdleConn&lt;C&gt; {
-  conn: Conn&lt;C&gt;,
-  idle_start: Instant,
+    conn: Conn&lt;C&gt;,
+    idle_start: Instant,
 }
 </code></pre>
 <h3 id="34-抽象数据库连接对象">3.4 抽象数据库连接对象</h3>
 <p>在 Conn 对象的定义中我们使用了泛型来指代一个具体的数据库连接对象的类型，这个泛型代表的是一个用户自定义的数据库连接对象类型，而这个类型肯定需要遵循一定的接口规范，因此，我们需要将这个接口定义出来。具体代码如下：</p>
 <pre><code class="language-rust">pub trait ManageConnection: Send + Sync + 'static {
-  type Connection: Send + 'static;
-  type Error: error::Error + 'static;
-  fn connect(&amp;self) -&gt; Result&lt;Self::Connection, Self::Error&gt;;
-  fn is_valid(&amp;self, conn: &amp;mut Self::Connection) -&gt; Result&lt;(), Self::Error&gt;;
-  fn has_broken(&amp;self, conn: &amp;mut Self::Connection) -&gt; bool;
+    type Connection: Send + 'static;
+    type Error: error::Error + 'static;
+    fn connect(&amp;self) -&gt; Result&lt;Self::Connection, Self::Error&gt;;
+    fn is_valid(&amp;self, conn: &amp;mut Self::Connection) -&gt; Result&lt;(), Self::Error&gt;;
+    fn has_broken(&amp;self, conn: &amp;mut Self::Connection) -&gt; bool;
 }
 </code></pre>
 <h2 id="4-初始化方式设计">4 初始化方式设计</h2>
@@ -187,128 +190,130 @@ pub struct Pool&lt;M&gt;(Arc&lt;SharedPool&lt;M&gt;&gt;) where M: ManageConnecti
 <p>用户只需要自定义一个实现了<code>ManageConnection</code>的类型并将其实例化，然后调用我们提供的一个初始化连接池的方法即可！</p>
 <p>类似的代码如下：</p>
 <pre><code class="language-rust">fn main() {
-  let manager = FooConnectionManager::new(&quot;localhost:3306&quot;);
-  let pool = Pool::builder()
-  	.max_size(15)
-  	.build(manager)
-  	.unwrap();
+    let manager = FooConnectionManager::new(&quot;localhost:3306&quot;);
+    let pool = Pool::builder()
+    .max_size(15)
+    .build(manager)
+    .unwrap();
 }
 </code></pre>
 <h2 id="5-初始化连接池">5 初始化连接池</h2>
 <p>初始化连接池即是要创建出一个 Pool 结构体的实例出来，因连接池的属性不少，所以采用建造者模式。</p>
 <pre><code class="language-rust">impl&lt;M&gt; Pool&lt;M&gt; where M: ManageConnection {
-  pub fn builder() -&gt; Builder&lt;M&gt; {
-    Builder::new()
-  }
+    pub fn builder() -&gt; Builder&lt;M&gt; {
+        Builder::new()
+    }
 }
 
 pub struct Builder&lt;M: ManageConnection&gt; {
-  max_size: u32,
-  min_idle: Option&lt;u32&gt;,
-  test_on_check_out: bool,
-  max_lifetime: Option&lt;Duration&gt;,
-  idle_timeout: Option&lt;Duration&gt;,
-  connection_timeout: Duration,
-  error_handler: Box&lt;dyn HandleError&lt;M::Error&gt;&gt;,
-  connection_customizer: Box&lt;dyn CustomizeConnection&lt;M::Connection, M::Error&gt;&gt;,
-  event_handler: Box&lt;dyn HandleEvent&gt;,
-  thread_pool: Option&lt;Arc&lt;ScheduledThreadPool&gt;&gt;,
-  reaper_rate: Duration,
-  _p: PhantomData&lt;M&gt;,
+    max_size: u32,
+    min_idle: Option&lt;u32&gt;,
+    test_on_check_out: bool,
+    max_lifetime: Option&lt;Duration&gt;,
+    idle_timeout: Option&lt;Duration&gt;,
+    connection_timeout: Duration,
+    error_handler: Box&lt;dyn HandleError&lt;M::Error&gt;&gt;,
+    connection_customizer: Box&lt;dyn CustomizeConnection&lt;M::Connection, M::Error&gt;&gt;,
+    event_handler: Box&lt;dyn HandleEvent&gt;,
+    thread_pool: Option&lt;Arc&lt;ScheduledThreadPool&gt;&gt;,
+    reaper_rate: Duration,
+    _p: PhantomData&lt;M&gt;,
 }
 
 impl&lt;M: ManagerConnection&gt; Builder&lt;M&gt; {
-  pub fn new() -&gt; Builder&lt;M&gt; {
-    Builder::default()
-  }
+    pub fn new() -&gt; Builder&lt;M&gt; {
+        Builder::default()
+    }
 }
 
 impl&lt;M: ManageConnection&gt; Default for Builder&lt;M&gt; {
-  fn default() -&gt; Builder&lt;M&gt; {
-    Builder {
-      max_size: 10,
-      min_idle: None,
-      test_on_check_out: true,
-      idle_timeout: Some(Duration::from_secs(10 * 60)),
-      max_lifetime: Some(Duration::from_secs(30 * 60)),
-      connection_timeout: Duration::from_secs(30),
-      error_handler: Box::new(LoggingErrorHandler),
-      event_handler: Box::new(NopEventHandler),
-      connection_customizer: Box::new(NopConnectionCustomizer),
-      thread_pool: None,
-      reaper_rate: Duration::from_secs(30),
-      _p: PhantomData,
+    fn default() -&gt; Builder&lt;M&gt; {
+        Builder {
+            max_size: 10,
+            min_idle: None,
+            test_on_check_out: true,
+            idle_timeout: Some(Duration::from_secs(10 * 60)),
+            max_lifetime: Some(Duration::from_secs(30 * 60)),
+            connection_timeout: Duration::from_secs(30),
+            error_handler: Box::new(LoggingErrorHandler),
+            event_handler: Box::new(NopEventHandler),
+            connection_customizer: Box::new(NopConnectionCustomizer),
+            thread_pool: None,
+            reaper_rate: Duration::from_secs(30),
+            _p: PhantomData,
+        }
     }
-  }
 }
 </code></pre>
 <p>初始化过程核心代码如下：</p>
 <pre><code class="language-rust">pub fn build(self, manager: M) -&gt; Result&lt;Pool&lt;M&gt;, Error&gt; {
-  let pool = self.build_unchecked(manager);
-  pool.wait_for_initialization()?;
-  Ok(pool)
+    let pool = self.build_unchecked(manager);
+    pool.wait_for_initialization()?;
+    Ok(pool)
 }
 
 pub fn build_unchecked(self, manager: M) -&gt; Pool&lt;M&gt; {
-  if let Some(min_idle) = self.min_idle {
-    assert!(self.max_size &gt;= min_idle, &quot;min_idle must be no larger than max_size&quot;);
-  }
-  let thread_pool = match self.thread_pool {
-    Some(thread_pool) =&gt; thread_pool,
-    None =&gt; Arc::new(ScheduledThreadPool::with_name(&quot;r2d2-worker-{}&quot;, 3));
-  }
-  let config = Config {
-    max_size: self.max_size,
-    min_idle: self.min_idle,
-    test_on_check_out: self.test_on_check_out,
-    max_lifetime: self.max_lifetime,
-    idle_timeout: self.idle_timeout,
-    connection_timeout: self.connection_timeout,
-    error_handler: self.error_handler,
-    event_handler: self.event_handler,
-    connection_customizer: self.connection_customizer,
-    thread_pool,
-  };
-  Pool::new_inner(config, manager, self.reaper_rate)
+    if let Some(min_idle) = self.min_idle {
+        assert!(self.max_size &gt;= min_idle, &quot;min_idle must be no larger than max_size&quot;);
+    }
+    let thread_pool = match self.thread_pool {
+        Some(thread_pool) =&gt; thread_pool,
+        None =&gt; Arc::new(ScheduledThreadPool::with_name(&quot;r2d2-worker-{}&quot;, 3));
+    }
+    let config = Config {
+        max_size: self.max_size,
+        min_idle: self.min_idle,
+        test_on_check_out: self.test_on_check_out,
+        max_lifetime: self.max_lifetime,
+        idle_timeout: self.idle_timeout,
+        connection_timeout: self.connection_timeout,
+        error_handler: self.error_handler,
+        event_handler: self.event_handler,
+        connection_customizer: self.connection_customizer,
+        thread_pool,
+    };
+    Pool::new_inner(config, manager, self.reaper_rate)
 }
 
 fn new_inner(config: Config&lt;M::Connection, M::Error&gt;, manager: M, reaper_rate: Duration) -&gt; Pool&lt;M&gt; {
-  let internals = PoolInternals {
-    conns: Vec::with_capacity(config.max_size as usize),
-    num_conns: 0,
-    pending_conns: 0,
-    last_error: None,
-  };
-  let shared =  Arc::new(SharedPool {
-    config,
-    manager,
-    internals: Mutex::new(internals),
-    cond: Condvar::new(),
-  });
-  
-  establish_idle_connections(&amp;shared, &amp;mut shared.internals.lock());
-  
-  if shared.config.max_lifetime.is_some() || shared.config.idle_timeout.is_some() {
-    let s = Arc::downgrade(&amp;shared);
-    shared
-    	.config
-    	.thread_pool
-    	.execute_at_fixed_rate(reaper_rate, reaper_rate,
-    		move || reap_connections(&amp;s));
-  }
-  
-  Pool(shared)
+    let internals = PoolInternals {
+        conns: Vec::with_capacity(config.max_size as usize),
+        num_conns: 0,
+        pending_conns: 0,
+        last_error: None,
+    };
+    let shared =  Arc::new(SharedPool {
+        config,
+        manager,
+        internals: Mutex::new(internals),
+        cond: Condvar::new(),
+    });
+
+    establish_idle_connections(&amp;shared, &amp;mut shared.internals.lock());
+
+    if shared.config.max_lifetime.is_some() || shared.config.idle_timeout.is_some() {
+        let s = Arc::downgrade(&amp;shared);
+        shared
+        .config
+        .thread_pool
+        
+        .execute_at_fixed_rate(reaper_rate, reaper_rate,
+            move || reap_connections(&amp;s));
+    }
+
+    Pool(shared)
 }
 
 fn establish_idle_connections&lt;M&gt;(shared: &amp;Arc&lt;SharedPool&lt;M&gt;&gt;, internals: &amp;mut PoolInternals&lt;M::Connection&gt;) where M: ManageConnection {
-  let min = shared.config.min_idle.unwrap_or(shared.config.max_size);
-  let idle = internals.conns.len() as u32;
-  for _ in idle..min {
-    add_connection(shared, internals);
-  }
+    let min = shared.config.min_idle.unwrap_or(shared.config.max_size);
+    let idle = internals.conns.len() as u32;
+    // 
+    for _ in idle..min {
+        add_connection(shared, internals);
+    }
 }
 
-// 给 shared 添加连接
+// 创建 internals 中的数据库连接对象
 fn add_connection&lt;M&gt;(shared: &amp;Arc&lt;SharedPool&lt;M&gt;&gt;, internals: &amp;mut PoolInternals&lt;M::Connection&gt;)
 where M: ManageConnection {
     if internals.num_conns + internals.pending_conns &gt;= shared.config.max_size {
@@ -384,7 +389,7 @@ fn reap_connections&lt;M&gt;(shared: &amp;Weak&lt;SharedPool&lt;M&gt;&gt;) where
     let mut old = Vec::with_capacity(shared.config.max_size as usize);
     let mut to_drop = vec![];
 
-    // 删除 internals 中的连接对象时需要将 internals 锁定
+    // 对 internals 加锁以便进行清理操作
     let mut internals = shared.internals.lock();
     // 在两个可变位置交换值，而不用对其中一个进行初始化。
     // 将 internals 里面的 conns 替换为一个空 vec，将原来的 internals 里面的 conns 按照 reap 值分组，
@@ -394,9 +399,11 @@ fn reap_connections&lt;M&gt;(shared: &amp;Weak&lt;SharedPool&lt;M&gt;&gt;) where
     for conn in old {
         let mut reap = false;
         if let Some(timeout) = shared.config.idle_timeout {
+            // 如果数据库连接对象的空闲时间超过设置的 idle_timeout 则 reap 为 true
             reap |= now - conn.idle_start &gt;= timeout;
         }
         if let Some(lifetime) = shared.config.max_lifetime {
+            // 如果数据库连接对象的存活时间超过设置的 max_lifetime，则  reap 为 true
             reap |= now - conn.conn.birth &gt;= lifetime;
         }
         if reap {
@@ -407,7 +414,37 @@ fn reap_connections&lt;M&gt;(shared: &amp;Weak&lt;SharedPool&lt;M&gt;&gt;) where
     }
     drop_conns(&amp;shared, internals, to_drop);
 }
+
+// 删除连接
+fn drop_conns&lt;M&gt; (
+    shared: &amp;Arc&lt;SharedPool&lt;M&gt;&gt;,
+    mut internals: MutexGuard&lt;PoolInternals&lt;M::Connection&gt;&gt;,
+    conns: Vec&lt;Conn&lt;M::Connection&gt;&gt;
+) where M: ManageConnection {
+    internals.num_conns -= conns.len() as u32;
+    establish_idle_connections(shared, &amp;mut internals);
+    // make sure we run connection destructors without this locked
+    // 在 establish_idle_connections --&gt; add_connection 中对 shared.internals 有加锁的操作
+    drop(internals);
+
+    // 迭代 conns 中的 conn，对每个 conn 调用 release 事件处理
+    for conn in conns {
+        let event = ReleaseEvent {
+            id: conn.id,
+            age: conn.birth.elapsed(),
+        };
+        shared.config.event_handler.handle_release(event);
+        shared.config.connection_customizer.on_release(conn.conn);
+    }
+}
 </code></pre>
+<h2 id="6-总结">6 总结</h2>
+<p>整体来看，要实现一个数据库连接池还是比较简单的。关键在于：</p>
+<ol>
+<li>要明白连接池应该具备哪些基本功能，即设计目标</li>
+<li>能够对设计目标进行分解，进行合理的抽象设计</li>
+<li>熟悉多线程编程</li>
+</ol>
 
         </div>
 
@@ -421,15 +458,6 @@ fn reap_connections&lt;M&gt;(shared: &amp;Weak&lt;SharedPool&lt;M&gt;&gt;) where
         <div class="flex justify-between py-8">
           
 
-          
-            <div class="next-post">
-              <a href="https://caedmonx.github.io/post/rust-bi-ji/">
-                <h3 class="post-title">
-                  rust 笔记
-                  <i class="ri-arrow-right-line"></i>
-                </h3>
-              </a>
-            </div>
           
         </div>
 

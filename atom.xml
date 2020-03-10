@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://caedmonx.github.io/</id>
     <title>Caedmon&apos;s Blog</title>
-    <updated>2020-03-08T15:03:31.619Z</updated>
+    <updated>2020-03-10T03:42:23.825Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://caedmonx.github.io/"/>
     <link rel="self" href="https://caedmonx.github.io/atom.xml"/>
@@ -22,25 +22,27 @@
         <content type="html"><![CDATA[<!-- more -->
 <p>在操作数据库时，如果每次都建立一个新的数据库连接，效率是十分低下的，所以一般都会使用数据库连接池。本篇通过 r2d2 这个通用连接池的源码来学习如何实现一个连接池。</p>
 <!-- more -->
+<h1 id="设计一个数据库连接池">设计一个数据库连接池</h1>
+<p>在操作数据库时，如果每次都建立一个新的数据库连接，效率是十分低下的，所以一般都会使用数据库连接池。本篇结合 r2d2 这个通用连接池的源码来学习如何实现一个连接池。</p>
 <h2 id="1-功能设计">1 功能设计</h2>
 <ol>
 <li>连接池不与具体的数据库耦合，应具备通用性</li>
 <li>连接池应具备可配置性</li>
-<li>提供接口，接入对具体数据库的连接功能</li>
+<li>连接池需具备管理数据库连接对象的功能，如控制闲置数据库连接对象的数量、清理超过生命周期的数据库连接对象等</li>
 </ol>
-<h2 id="2-实现思路">2 实现思路</h2>
-<p>连接池是一个抽象出来的包含多个数据库连接对象的“集合”，这个“集合”不仅保存着一定数量的连接对象，并且还具备对连接对象的管理功能，这些管理功能主要用以保证连接池的可配置性和高可用性。</p>
-<p>每个数据库连接对象对应一个线程，多个连接对象则相应的需要多个线程，因此数据库连接池一定是基于多线程技术的。为了高效，需要使用线程池来解决连接对象的创建问题。</p>
-<p>为实现连接池不与具体的数据库耦合这一目标，应该设计一个连接对象的接口，将具体的连接对象生成逻辑交由接口的实现类去解决。</p>
+<h2 id="2-抽象设计">2 抽象设计</h2>
+<p>连接池是一个抽象出来的包含多个连接对象的“集合”，这个“集合”不仅保存着一定数量的连接对象，还存储着连接对象相关的若干状态信息，以便对连接对象其进行管理。因此，可以抽象出一个连接池对象。</p>
 <p>连接池要提供一定的可配置项，让用户可根据自身的情况来进行合理的配置，因此可以抽象出一个配置类的对象，用来提供配置功能。</p>
+<p>每个连接对象对应一个线程，多个连接对象则相应的需要多个线程，数据库连接池一定是基于多线程技术的。为了高效，需要使用线程池来解决连接对象的创建问题。</p>
+<p>为实现连接池不与具体的数据库耦合这一目标，应该对数据库连接对象进行抽象设计，将具体的数据库连接对象逻辑交由用户自行实现。</p>
 <h2 id="3-代码实现">3 代码实现</h2>
-<p>根据上节梳理的实现思路，先定义一个连接池对象，该对象包括了若干成员对象，如下：</p>
+<p>根据上节的抽象设计，先定义一个连接池对象，该对象包括了若干成员对象，如下：</p>
 <pre><code class="language-rust">// SharedPool 为内部使用的池对象
-struct SharedPool&lt;M&gt;  where  M: ManageConnection {
-  config: Config&lt;M::Connection, M::Error&gt;,
-  manager: M,
-  internals: Mutex&lt;PoolInternals&lt;M::Connection&gt;&gt;,
-  cond: Condvar,
+struct SharedPool&lt;M&gt; where M: ManageConnection {
+    config: Config&lt;M::Connection, M::Error&gt;,
+    manager: M,
+    internals: Mutex&lt;PoolInternals&lt;M::Connection&gt;&gt;,
+    cond: Condvar,
 }
 // Pool 为外部可引用的池对象
 pub struct Pool&lt;M&gt;(Arc&lt;SharedPool&lt;M&gt;&gt;) where M: ManageConnection;
@@ -48,26 +50,26 @@ pub struct Pool&lt;M&gt;(Arc&lt;SharedPool&lt;M&gt;&gt;) where M: ManageConnecti
 <h3 id="31-config-对象的设计">3.1 Config 对象的设计</h3>
 <p>Config 对象用来提供可配置项。具体代码如下：</p>
 <pre><code class="language-rust">pub struct Config&lt;C, E&gt; {
-  // 最大连接数量
-  pub max_size: u32,
-  // 最小闲置连接数量
-  pub min_idle: Option&lt;u32&gt;,
-  // 如果设置为 true，每次从池中取一个连接时将做一下测试，看看连接是否能够正常使用
-  pub test_on_check_out: bool,
-  // 最大生命周期
-  pub max_lifetime: Option&lt;Duration&gt;,
-  // 闲置超时时长
-  pub idle_timeout: Option&lt;Duration&gt;,
-  // 建立连接的超时时长 
-  pub connection_timeout: Duration,
-  // 错误处理器
-  pub error_handler: Box&lt;dyn HandleError&lt;E&gt;&gt;,
-  // 事件处理器
-  pub event_handler: Box&lt;dyn HandleEvent&gt;,
-  // 自定义连接项
-  pub connection_customizer: Box&lt;dyn CustomizeConnection&lt;C, E&gt;&gt;,
-  // 线程池
-  pub thread_pool: Arc&lt;ScheduledThreadPool&gt;,
+    // 最大连接数量
+    pub max_size: u32,
+    // 最小闲置连接数量
+    pub min_idle: Option&lt;u32&gt;,
+    // 如果设置为 true，每次从池中取一个连接时将做一下测试，看看连接是否能够正常使用
+    pub test_on_check_out: bool,
+    // 最大生命周期
+    pub max_lifetime: Option&lt;Duration&gt;,
+    // 闲置超时时长
+    pub idle_timeout: Option&lt;Duration&gt;,
+    // 建立连接的超时时长 
+    pub connection_timeout: Duration,
+    // 错误处理器
+    pub error_handler: Box&lt;dyn HandleError&lt;E&gt;&gt;,
+    // 事件处理器
+    pub event_handler: Box&lt;dyn HandleEvent&gt;,
+    // 自定义连接项
+    pub connection_customizer: Box&lt;dyn CustomizeConnection&lt;C, E&gt;&gt;,
+    // 线程池
+    pub thread_pool: Arc&lt;ScheduledThreadPool&gt;,
 }
 </code></pre>
 <h3 id="32-线程池">3.2 线程池</h3>
@@ -75,26 +77,26 @@ pub struct Pool&lt;M&gt;(Arc&lt;SharedPool&lt;M&gt;&gt;) where M: ManageConnecti
 <h3 id="33-连接池中的连接对象">3.3 连接池中的连接对象</h3>
 <p>设计良好的连接池具备对数据库连接对象的管理能力，要有效管理数据库连接对象，则需要记录数据库连接对象的若干状态，因此，定义如下连接池中的连接对象，其中泛型 C 用以指代一个具体的数据库连接对象。</p>
 <pre><code class="language-rust">struct Conn&lt;C&gt; {
-  conn: C,
-  extensions: Extensions,
-  birth: Instant,
-  id: u64,
+    conn: C,
+    extensions: Extensions,
+    birth: Instant,
+    id: u64,
 }
 </code></pre>
 <p>因为要对闲置的连接对象进行管理，所以可再定义一个闲置连接对象：</p>
 <pre><code class="language-rust">struct IdleConn&lt;C&gt; {
-  conn: Conn&lt;C&gt;,
-  idle_start: Instant,
+    conn: Conn&lt;C&gt;,
+    idle_start: Instant,
 }
 </code></pre>
 <h3 id="34-抽象数据库连接对象">3.4 抽象数据库连接对象</h3>
 <p>在 Conn 对象的定义中我们使用了泛型来指代一个具体的数据库连接对象的类型，这个泛型代表的是一个用户自定义的数据库连接对象类型，而这个类型肯定需要遵循一定的接口规范，因此，我们需要将这个接口定义出来。具体代码如下：</p>
 <pre><code class="language-rust">pub trait ManageConnection: Send + Sync + 'static {
-  type Connection: Send + 'static;
-  type Error: error::Error + 'static;
-  fn connect(&amp;self) -&gt; Result&lt;Self::Connection, Self::Error&gt;;
-  fn is_valid(&amp;self, conn: &amp;mut Self::Connection) -&gt; Result&lt;(), Self::Error&gt;;
-  fn has_broken(&amp;self, conn: &amp;mut Self::Connection) -&gt; bool;
+    type Connection: Send + 'static;
+    type Error: error::Error + 'static;
+    fn connect(&amp;self) -&gt; Result&lt;Self::Connection, Self::Error&gt;;
+    fn is_valid(&amp;self, conn: &amp;mut Self::Connection) -&gt; Result&lt;(), Self::Error&gt;;
+    fn has_broken(&amp;self, conn: &amp;mut Self::Connection) -&gt; bool;
 }
 </code></pre>
 <h2 id="4-初始化方式设计">4 初始化方式设计</h2>
@@ -102,128 +104,130 @@ pub struct Pool&lt;M&gt;(Arc&lt;SharedPool&lt;M&gt;&gt;) where M: ManageConnecti
 <p>用户只需要自定义一个实现了<code>ManageConnection</code>的类型并将其实例化，然后调用我们提供的一个初始化连接池的方法即可！</p>
 <p>类似的代码如下：</p>
 <pre><code class="language-rust">fn main() {
-  let manager = FooConnectionManager::new(&quot;localhost:3306&quot;);
-  let pool = Pool::builder()
-  	.max_size(15)
-  	.build(manager)
-  	.unwrap();
+    let manager = FooConnectionManager::new(&quot;localhost:3306&quot;);
+    let pool = Pool::builder()
+    .max_size(15)
+    .build(manager)
+    .unwrap();
 }
 </code></pre>
 <h2 id="5-初始化连接池">5 初始化连接池</h2>
 <p>初始化连接池即是要创建出一个 Pool 结构体的实例出来，因连接池的属性不少，所以采用建造者模式。</p>
 <pre><code class="language-rust">impl&lt;M&gt; Pool&lt;M&gt; where M: ManageConnection {
-  pub fn builder() -&gt; Builder&lt;M&gt; {
-    Builder::new()
-  }
+    pub fn builder() -&gt; Builder&lt;M&gt; {
+        Builder::new()
+    }
 }
 
 pub struct Builder&lt;M: ManageConnection&gt; {
-  max_size: u32,
-  min_idle: Option&lt;u32&gt;,
-  test_on_check_out: bool,
-  max_lifetime: Option&lt;Duration&gt;,
-  idle_timeout: Option&lt;Duration&gt;,
-  connection_timeout: Duration,
-  error_handler: Box&lt;dyn HandleError&lt;M::Error&gt;&gt;,
-  connection_customizer: Box&lt;dyn CustomizeConnection&lt;M::Connection, M::Error&gt;&gt;,
-  event_handler: Box&lt;dyn HandleEvent&gt;,
-  thread_pool: Option&lt;Arc&lt;ScheduledThreadPool&gt;&gt;,
-  reaper_rate: Duration,
-  _p: PhantomData&lt;M&gt;,
+    max_size: u32,
+    min_idle: Option&lt;u32&gt;,
+    test_on_check_out: bool,
+    max_lifetime: Option&lt;Duration&gt;,
+    idle_timeout: Option&lt;Duration&gt;,
+    connection_timeout: Duration,
+    error_handler: Box&lt;dyn HandleError&lt;M::Error&gt;&gt;,
+    connection_customizer: Box&lt;dyn CustomizeConnection&lt;M::Connection, M::Error&gt;&gt;,
+    event_handler: Box&lt;dyn HandleEvent&gt;,
+    thread_pool: Option&lt;Arc&lt;ScheduledThreadPool&gt;&gt;,
+    reaper_rate: Duration,
+    _p: PhantomData&lt;M&gt;,
 }
 
 impl&lt;M: ManagerConnection&gt; Builder&lt;M&gt; {
-  pub fn new() -&gt; Builder&lt;M&gt; {
-    Builder::default()
-  }
+    pub fn new() -&gt; Builder&lt;M&gt; {
+        Builder::default()
+    }
 }
 
 impl&lt;M: ManageConnection&gt; Default for Builder&lt;M&gt; {
-  fn default() -&gt; Builder&lt;M&gt; {
-    Builder {
-      max_size: 10,
-      min_idle: None,
-      test_on_check_out: true,
-      idle_timeout: Some(Duration::from_secs(10 * 60)),
-      max_lifetime: Some(Duration::from_secs(30 * 60)),
-      connection_timeout: Duration::from_secs(30),
-      error_handler: Box::new(LoggingErrorHandler),
-      event_handler: Box::new(NopEventHandler),
-      connection_customizer: Box::new(NopConnectionCustomizer),
-      thread_pool: None,
-      reaper_rate: Duration::from_secs(30),
-      _p: PhantomData,
+    fn default() -&gt; Builder&lt;M&gt; {
+        Builder {
+            max_size: 10,
+            min_idle: None,
+            test_on_check_out: true,
+            idle_timeout: Some(Duration::from_secs(10 * 60)),
+            max_lifetime: Some(Duration::from_secs(30 * 60)),
+            connection_timeout: Duration::from_secs(30),
+            error_handler: Box::new(LoggingErrorHandler),
+            event_handler: Box::new(NopEventHandler),
+            connection_customizer: Box::new(NopConnectionCustomizer),
+            thread_pool: None,
+            reaper_rate: Duration::from_secs(30),
+            _p: PhantomData,
+        }
     }
-  }
 }
 </code></pre>
 <p>初始化过程核心代码如下：</p>
 <pre><code class="language-rust">pub fn build(self, manager: M) -&gt; Result&lt;Pool&lt;M&gt;, Error&gt; {
-  let pool = self.build_unchecked(manager);
-  pool.wait_for_initialization()?;
-  Ok(pool)
+    let pool = self.build_unchecked(manager);
+    pool.wait_for_initialization()?;
+    Ok(pool)
 }
 
 pub fn build_unchecked(self, manager: M) -&gt; Pool&lt;M&gt; {
-  if let Some(min_idle) = self.min_idle {
-    assert!(self.max_size &gt;= min_idle, &quot;min_idle must be no larger than max_size&quot;);
-  }
-  let thread_pool = match self.thread_pool {
-    Some(thread_pool) =&gt; thread_pool,
-    None =&gt; Arc::new(ScheduledThreadPool::with_name(&quot;r2d2-worker-{}&quot;, 3));
-  }
-  let config = Config {
-    max_size: self.max_size,
-    min_idle: self.min_idle,
-    test_on_check_out: self.test_on_check_out,
-    max_lifetime: self.max_lifetime,
-    idle_timeout: self.idle_timeout,
-    connection_timeout: self.connection_timeout,
-    error_handler: self.error_handler,
-    event_handler: self.event_handler,
-    connection_customizer: self.connection_customizer,
-    thread_pool,
-  };
-  Pool::new_inner(config, manager, self.reaper_rate)
+    if let Some(min_idle) = self.min_idle {
+        assert!(self.max_size &gt;= min_idle, &quot;min_idle must be no larger than max_size&quot;);
+    }
+    let thread_pool = match self.thread_pool {
+        Some(thread_pool) =&gt; thread_pool,
+        None =&gt; Arc::new(ScheduledThreadPool::with_name(&quot;r2d2-worker-{}&quot;, 3));
+    }
+    let config = Config {
+        max_size: self.max_size,
+        min_idle: self.min_idle,
+        test_on_check_out: self.test_on_check_out,
+        max_lifetime: self.max_lifetime,
+        idle_timeout: self.idle_timeout,
+        connection_timeout: self.connection_timeout,
+        error_handler: self.error_handler,
+        event_handler: self.event_handler,
+        connection_customizer: self.connection_customizer,
+        thread_pool,
+    };
+    Pool::new_inner(config, manager, self.reaper_rate)
 }
 
 fn new_inner(config: Config&lt;M::Connection, M::Error&gt;, manager: M, reaper_rate: Duration) -&gt; Pool&lt;M&gt; {
-  let internals = PoolInternals {
-    conns: Vec::with_capacity(config.max_size as usize),
-    num_conns: 0,
-    pending_conns: 0,
-    last_error: None,
-  };
-  let shared =  Arc::new(SharedPool {
-    config,
-    manager,
-    internals: Mutex::new(internals),
-    cond: Condvar::new(),
-  });
-  
-  establish_idle_connections(&amp;shared, &amp;mut shared.internals.lock());
-  
-  if shared.config.max_lifetime.is_some() || shared.config.idle_timeout.is_some() {
-    let s = Arc::downgrade(&amp;shared);
-    shared
-    	.config
-    	.thread_pool
-    	.execute_at_fixed_rate(reaper_rate, reaper_rate,
-    		move || reap_connections(&amp;s));
-  }
-  
-  Pool(shared)
+    let internals = PoolInternals {
+        conns: Vec::with_capacity(config.max_size as usize),
+        num_conns: 0,
+        pending_conns: 0,
+        last_error: None,
+    };
+    let shared =  Arc::new(SharedPool {
+        config,
+        manager,
+        internals: Mutex::new(internals),
+        cond: Condvar::new(),
+    });
+
+    establish_idle_connections(&amp;shared, &amp;mut shared.internals.lock());
+
+    if shared.config.max_lifetime.is_some() || shared.config.idle_timeout.is_some() {
+        let s = Arc::downgrade(&amp;shared);
+        shared
+        .config
+        .thread_pool
+        
+        .execute_at_fixed_rate(reaper_rate, reaper_rate,
+            move || reap_connections(&amp;s));
+    }
+
+    Pool(shared)
 }
 
 fn establish_idle_connections&lt;M&gt;(shared: &amp;Arc&lt;SharedPool&lt;M&gt;&gt;, internals: &amp;mut PoolInternals&lt;M::Connection&gt;) where M: ManageConnection {
-  let min = shared.config.min_idle.unwrap_or(shared.config.max_size);
-  let idle = internals.conns.len() as u32;
-  for _ in idle..min {
-    add_connection(shared, internals);
-  }
+    let min = shared.config.min_idle.unwrap_or(shared.config.max_size);
+    let idle = internals.conns.len() as u32;
+    // 
+    for _ in idle..min {
+        add_connection(shared, internals);
+    }
 }
 
-// 给 shared 添加连接
+// 创建 internals 中的数据库连接对象
 fn add_connection&lt;M&gt;(shared: &amp;Arc&lt;SharedPool&lt;M&gt;&gt;, internals: &amp;mut PoolInternals&lt;M::Connection&gt;)
 where M: ManageConnection {
     if internals.num_conns + internals.pending_conns &gt;= shared.config.max_size {
@@ -299,7 +303,7 @@ fn reap_connections&lt;M&gt;(shared: &amp;Weak&lt;SharedPool&lt;M&gt;&gt;) where
     let mut old = Vec::with_capacity(shared.config.max_size as usize);
     let mut to_drop = vec![];
 
-    // 删除 internals 中的连接对象时需要将 internals 锁定
+    // 对 internals 加锁以便进行清理操作
     let mut internals = shared.internals.lock();
     // 在两个可变位置交换值，而不用对其中一个进行初始化。
     // 将 internals 里面的 conns 替换为一个空 vec，将原来的 internals 里面的 conns 按照 reap 值分组，
@@ -309,9 +313,11 @@ fn reap_connections&lt;M&gt;(shared: &amp;Weak&lt;SharedPool&lt;M&gt;&gt;) where
     for conn in old {
         let mut reap = false;
         if let Some(timeout) = shared.config.idle_timeout {
+            // 如果数据库连接对象的空闲时间超过设置的 idle_timeout 则 reap 为 true
             reap |= now - conn.idle_start &gt;= timeout;
         }
         if let Some(lifetime) = shared.config.max_lifetime {
+            // 如果数据库连接对象的存活时间超过设置的 max_lifetime，则  reap 为 true
             reap |= now - conn.conn.birth &gt;= lifetime;
         }
         if reap {
@@ -322,449 +328,37 @@ fn reap_connections&lt;M&gt;(shared: &amp;Weak&lt;SharedPool&lt;M&gt;&gt;) where
     }
     drop_conns(&amp;shared, internals, to_drop);
 }
-</code></pre>
-]]></content>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[rust 笔记]]></title>
-        <id>https://caedmonx.github.io/post/rust-bi-ji/</id>
-        <link href="https://caedmonx.github.io/post/rust-bi-ji/">
-        </link>
-        <updated>2020-03-07T10:33:01.000Z</updated>
-        <content type="html"><![CDATA[<hr>
-<h2 id="title-深入浅出-rust笔记tags">title: 《深入浅出 Rust》笔记<br>
-tags:</h2>
-<h1 id="第一章">第一章</h1>
-<p>Format 格式详细说明：</p>
-<pre><code class="language-rust">fn main() {
-    println!(&quot;{}&quot;, 1);            // 默认用法,打印Display
-    println!(&quot;{:o}&quot;, 9);          // 八进制
-    println!(&quot;{:x}&quot;, 255);        // 十六进制 小写
-    println!(&quot;{:X}&quot;, 255);        // 十六进制 大写
-    println!(&quot;{:p}&quot;, &amp;0);         // 指针
-    println!(&quot;{:b}&quot;, 15);         // 二进制
-    println!(&quot;{:e}&quot;, 10000f32);   // 科学计数(小写)
-    println!(&quot;{:E}&quot;, 10000f32);   // 科学计数(大写)
 
-    println!(&quot;{:?}&quot;, &quot;test&quot;);     // 打印Debug
-    println!(&quot;{:#?}&quot;, (&quot;test1&quot;, &quot;test2&quot;));        // 带换行和缩进的Debug打印
+// 删除连接
+fn drop_conns&lt;M&gt; (
+    shared: &amp;Arc&lt;SharedPool&lt;M&gt;&gt;,
+    mut internals: MutexGuard&lt;PoolInternals&lt;M::Connection&gt;&gt;,
+    conns: Vec&lt;Conn&lt;M::Connection&gt;&gt;
+) where M: ManageConnection {
+    internals.num_conns -= conns.len() as u32;
+    establish_idle_connections(shared, &amp;mut internals);
+    // make sure we run connection destructors without this locked
+    // 在 establish_idle_connections --&gt; add_connection 中对 shared.internals 有加锁的操作
+    drop(internals);
 
-    println!(&quot;{a} {b} {b}&quot;, a = &quot;x&quot;, b = &quot;y&quot;);   // 命名参数
-}
-</code></pre>
-<h2 id="调试api">调试API</h2>
-<h3 id="打印一个类型的内存占用大小">打印一个类型的内存占用大小：</h3>
-<pre><code class="language-rust">fn main() {
-    fn mut_array(a : &amp;mut [i32]) {
-        a[2] = 5;
-    }
-
-    println!(&quot;size of &amp;[i32; 3] : {:?}&quot;, std::mem::size_of::&lt;&amp;[i32; 3]&gt;());
-    println!(&quot;size of &amp;[i32]    : {:?}&quot;, std::mem::size_of::&lt;&amp;[i32]&gt;());
-
-    let mut v :  [i32; 3] = [1,2,3];
-    {
-        let s : &amp;mut [i32; 3] = &amp;mut v;
-        mut_array(s);
-    }
-    println!(&quot;{:?}&quot;, v);
-}
-</code></pre>
-<h3 id="查看变量是什么类型">查看变量是什么类型</h3>
-<h4 id="方案一利用报错信息">方案一：利用报错信息</h4>
-<pre><code class="language-rust">// 这个函数接受一个 unit 类型作为参数
-fn type_id(_: ()) {}
-
-fn main() {
-    let ref x = 5_i32;
-    // 实际参数的类型肯定不是 unit,此处必定有编译错误,通过编译错误,我们可以看到实参的具体类型
-    type_id(x);
-}
-</code></pre>
-<h4 id="方案二利用-nightly-版本的函数">方案二：利用 nightly 版本的函数</h4>
-<pre><code class="language-rust">#![feature(core_intrinsics)]
-
-fn print_type_name&lt;T&gt;(_arg: &amp;T) {
-    unsafe {
-        println!(&quot;{}&quot;, std::intrinsics::type_name::&lt;T&gt;());
+    // 迭代 conns 中的 conn，对每个 conn 调用 release 事件处理
+    for conn in conns {
+        let event = ReleaseEvent {
+            id: conn.id,
+            age: conn.birth.elapsed(),
+        };
+        shared.config.event_handler.handle_release(event);
+        shared.config.connection_customizer.on_release(conn.conn);
     }
 }
-
-fn main() {
-    let ref x = 5_i32;
-    print_type_name(&amp;x);
-}
 </code></pre>
-<h1 id="第二章-变量和类型">第二章 变量和类型</h1>
-<h3 id="226-指针类型">2.2.6 指针类型</h3>
-<p>无GC的编程语言，如C、C++以及Rust，对数据的组织操作有更多的自由度，具体表现为：</p>
-<ul>
-<li>同一个类型，某些时候可以指定它在栈上，某些时候可以指定它在堆上。内存分配方式可以取决于使用方式，与类型本身无关。</li>
-<li>既可以直接访问数据，也可以通过指针间接访问数据。可以针对任何一个对象取得指向它的指针。</li>
-<li>既可以在复合数据类型中直接嵌入别的类型的实体，也可以使用指针，间接指向别的类型。</li>
-<li>甚至可能在复合数据类型末尾嵌入不定长数据构造出不定长的复合数据类型。</li>
-</ul>
-<p>Rust 中常见的几种指针类型如下：</p>
-<ul>
-<li><code>Box&lt;T&gt;</code> 指向类型T的、具有所有权的指针，有权释放内存</li>
-<li><code>&amp;T</code> 指向类型T的借用指针，也称为引用，无权释放内存，无权写数据</li>
-<li><code>&amp;mut T</code>  指向类型T的 mut 型借用指针，无权释放内存，有权写数据</li>
-<li><code>*const T</code> 指向类型T的只读裸指针，没有生命周期信息，无权写数据</li>
-<li><code>*mut T</code>  指向类型T的可读写裸指针，没有生命周期信息，有权写数据</li>
-</ul>
-<p>在 Rust 标准库中还有一种封装起来的可以当作指针使用的类型，叫“智能指针”。常见的智能指针如下：</p>
-<ul>
-<li><code>Rc&lt;T&gt;</code>  指向类型T的引用计数指针，共享所有权，线程不安全</li>
-<li><code>Arc&lt;T&gt;</code>  指向类型T的原子型引用计数指针，共享所有权，线程安全</li>
-<li><code>Cow&lt;'a, T&gt;</code>  Clone-on-write，写时复制指针。可能是借用指针，也可能是具有所有权的指针</li>
-</ul>
-<h1 id="第五章-trait">第五章 trait</h1>
-<h2 id="56-derive">5.6 Derive</h2>
-<p>目前版本的 rust 规定，在函数参数传递、返回值传递等地方，都要求这个类型在编译阶段有确定的大小。否则，编译器就不知道该如何生成代码了。</p>
-<p>目前，Rust 支持的可以自动 derive 的 trait 有以下：</p>
-<ul>
-<li>Debug</li>
-<li>Clone</li>
-<li>Copy</li>
-<li>Hash</li>
-<li>RustcEncodable</li>
-<li>RustcDecodable</li>
-<li>PartialEq</li>
-<li>Eq</li>
-<li>ParialOrd</li>
-<li>Ord</li>
-<li>Default</li>
-<li>FromPrimitive</li>
-<li>Send</li>
-<li>Sync</li>
-</ul>
-<h3 id="582-partialordordpartialeqeq">5.8.2 PartialOrd/Ord/PartialEq/Eq</h3>
-<p>什么是全序？什么是偏序？</p>
-<p>对于集合 X 中的元素 a, b, c</p>
+<h2 id="6-总结">6 总结</h2>
+<p>整体来看，要实现一个数据库连接池还是比较简单的。关键在于：</p>
 <ol>
-<li>如果a&lt;b则一定有！（a&gt;b）；反之，若a&gt;b，则一定有！（a&lt;b），称为反对称性。</li>
-<li>如果a&lt;b且b&lt;c则a&lt;c，称为传递性。</li>
-<li>对于集合X中的所有元素，都存在a&lt;b或a&gt;b或者a==b，三者必居其一，称为完全性。</li>
+<li>要明白连接池应该具备哪些基本功能，即设计目标</li>
+<li>能够对设计目标进行分解，进行合理的抽象设计</li>
+<li>熟悉多线程编程</li>
 </ol>
-<p>如果集合X中的元素只具备上述前两条特征，则称X是“偏序”。同时具备以上所有特征，则称X是“全序”。</p>
-<h1 id="第六章-数组和字符串">第六章 数组和字符串</h1>
-<p>在目前的标准库中，数组本身没有实现IntoIterator trait，但是数组切片是实现了的。所以我们可以直接在for in循环中使用数组切片，而不能直接使用数组本身。</p>
-<pre><code class="language-rust">fn main() {
-    let v = [0_i32; 10];
-    for i in &amp;v {
-        println!(&quot;{:?}&quot;, i);
-    }
-}
-</code></pre>
-<h3 id="614-dst-和胖指针">6.1.4 DST 和胖指针</h3>
-<pre><code class="language-rust">fn raw_slice(arr: &amp;[i32]) {
-    unsafe {
-        let (val1, val2) : (usize, usize) = std::mem::transmute(arr);
-        println!(&quot;Value in raw pointer:&quot;);
-        println!(&quot;value1: {:x}&quot;, val1);
-        println!(&quot;value2: {:x}&quot;, val2);
-    }
-}
-
-fn main() {
-    let arr : [i32; 5] = [1, 2, 3, 4, 5];
-    let address : &amp;[i32; 5] = &amp;arr;
-    println!(&quot;Address of arr: {:p}&quot;, address);
-
-    raw_slice(address as &amp;[i32]);
-}
-
-/// 输出结果：
-/// Address of arr: 0x7ffcf4069bfc
-/// Value in raw pointer:
-/// value1: 7ffcf4069bfc
-/// value2: 5
-</code></pre>
-<p>数组切片是指向一个数组的指针，而它比指针又多了一点东西——它不止包含有一个指向数组的指针，切片本身还含带长度信息。</p>
-<p>Slice与普通的指针是不同的，它有一个非常形象的名字：胖指针（fat pointer）。与这个概念相对应的概念是“动态大小类型”（Dynamic Sized Type，DST）。所谓的DST指的是编译阶段无法确定占用空间大小的类型。<em><strong>为了安全性，指向DST的指针一般是胖指针。</strong></em></p>
-<p>比如：对于不定长数组类型[T]，有对应的胖指针&amp;[T]类型；对于不定长字符串str类型，有对应的胖指针&amp;str类型；以及在后文中会出现的Trait Object；等等。</p>
-<p>由于不定长数组类型[T]在编译阶段是无法判断该类型占用空间的大小的，目前我们不能在栈上声明一个不定长大小数组的变量实例，也不能用它作为函数的参数、返回值。但是，指向不定长数组的胖指针的大小是确定的，&amp;[T]类型可以用做变量实例、函数参数、返回值。</p>
-<p>对于 DST 类型，Rust 有如下限制：</p>
-<ul>
-<li>只能通过指针来间接创建和操作DST类型，&amp;[T] 、 Box&lt;[T]&gt;可以，[T]不可以；</li>
-<li>局部变量和函数参数的类型不能是DST类型，因为局部变量和函数参数必须在编译阶段知道它的大小因为目前unsized rvalue功能还没有实现；</li>
-<li>enum中不能包含DST类型，struct中只有最后一个元素可以是DST，其他地方不行，如果包含有DST类型，那么这个结构体也就成了DST类型。</li>
-</ul>
-<p>DST 这一类型设计的好处：</p>
-<ul>
-<li>首先，DST类型虽然有一些限制条件，但我们依然可以把它当成合法的类型看待，比如，可以为这样的类型实现trait、添加方法、用在泛型参数中等；</li>
-<li>胖指针的设计，避免了数组类型作为参数传递时自动退化为裸指针类型，丢失了长度信息的问题，保证了类型安全；</li>
-<li>这一设计依然保持了与“所有权”“生命周期”等概念相容的特点。</li>
-</ul>
-<h3 id="615-range">6.1.5 Range</h3>
-<pre><code class="language-rust">fn main() {
-    use std::iter::Iterator;
-// 先用rev方法把这个区间反过来,然后用map方法把每个元素乘以10
-    let r = (1i32..11).rev().map(|i| i * 10);
-
-    for i in r {
-        print!(&quot;{:?}\t&quot;, i);
-    }
-}
-</code></pre>
-<h3 id="616-边界检查">6.1.6 边界检查</h3>
-<p>Rust宣称的优点是“无GC的内存安全”，那么数组越界会直接导致程序崩溃这件事情是否意味着Rust不够安全呢？不能这么理解。Rust保证的“内存安全”，并非意味着“永不崩溃”。Rust中关于数组越界的行为，定义得非常清晰。相比于C/C++，Rust消除的是“未定义行为”（Undefined Behaviour）。</p>
-<p>对于明显的数组越界行为，在Rust中可以通过lint检查来发现。大家可以参考“clippy”这个项目，它可以检查出这种明显的常量索引越界的现象。然而，总体来说，在Rust里面，靠编译阶段静态检查是无法消除数组越界的行为的。</p>
-<p>一般情况下，Rust不鼓励大量使用“索引”操作。正常的“索引”操作都会执行一次“边界检查”。从执行效率上来说，Rust比C/C++的数组索引效率低一点，因为C/C++的索引操作是不执行任何安全性检查的，它们对应的Rust代码相当于调用get_unchecked（）函数。在Rust中，更加地道的做法是尽量使用“迭代器”方法。“迭代器”非常重要，本书将在第24章专门详细分析。</p>
-<pre><code class="language-rust">fn main() {
-    use std::iter::Iterator;
-
-    let v = &amp;[10i32, 20, 30, 40, 50];
-
-    // 如果我们同时需要index和内部元素的值,调用enumerate()方法
-    for (index, value) in v.iter().enumerate() {
-        println!(&quot;{} {}&quot;, index, value);
-    }
-
-    // filter方法可以执行过滤,nth函数可以获取第n个元素
-    let item = v.iter().filter(|&amp;x| *x % 2 == 0).nth(2);
-    println!(&quot;{:?}&quot;, item);
-}
-</code></pre>
-<h1 id="第七章-模式解构">第七章 模式解构</h1>
-<h3 id="722-下划线">7.2.2 下划线</h3>
-<p>下划线在Rust里面用处很多，比如：在match表达式中表示“其他分支”，在模式中作为占位符，还可以在类型中做占位符，在整数和小数字面量中做连接符，等等。</p>
-<p>除了下划线可以在模式中作为“占位符”，还有两个点..也可以在模式中作为“占位符”使用。下划线表示省略一个元素，两个点可以表示省略多个元素。比如：</p>
-<pre><code class="language-rust">fn main() {
-    let x = (1, 2, 3);
-    let (a, _) = x;    // 模式解构
-    println!(&quot;{}&quot;, a);
-}
-
-let (a, _, _) = x; // 用下划线,那么个数要匹配
-
-let (a, ..) = x;   // 用两个点,表示其他的全部省略
-let (a, .., b) = x;// 用两个点,表示只省略所有元素也是可以的
-</code></pre>
-<h1 id="第十章-内存管理基础">第十章 内存管理基础</h1>
-<p>一个进程在执行的时候，它所占用的内存的虚拟地址空间一般被分割成好几个区域，我们称为“段”（Segment）。常见的几个段如下：</p>
-<ul>
-<li>代码段。编译后的机器码存在的区域。一般这个段是只读的。</li>
-<li>bss段。存放未初始化的全局变量和静态变量的区域。</li>
-<li>数据段。存放有初始化的全局变量和静态变量的区域。</li>
-<li>函数调用栈（call stack segment）。存放函数参数、局部变量以及其他函数调用相关信息的区域。</li>
-<li>堆（heap）。存放动态分配内存的区域。</li>
-</ul>
-<h1 id="第十一章-所有权和移动语义">第十一章 所有权和移动语义</h1>
-<h2 id="113-复制语义">11.3 复制语义</h2>
-<p>默认的move语义是Rust的一个重要设计，但是任何时候需要复制都去调用clone函数会显得非常烦琐。对于一些简单类型，比如整数、bool，让它们在赋值的时候默认采用复制操作会让语言更简单。</p>
-<p>Rust中，在普通变量绑定、函数传参、模式匹配等场景下，凡是实现了std：：marker：：Copy trait的类型，都会执行copy语义。基本类型，比如数字、字符、bool等，都实现了Copy trait，因此具备copy语义。</p>
-<p>对于自定义类型，默认是没有实现Copy trait的，但是我们可以手动添上。</p>
-<p>绝大部分情况下，实现Copy trait和Clone trait是一个非常机械化的、重复性的工作，clone方法的函数体要对每个成员调用一下clone方法。Rust提供了一个编译器扩展derive attribute，来帮我们写这些代码，其使用方式为#[derive（Copy，Clone）]。只要一个类型的所有成员都具有Clone trait，我们就可以使用这种方法来让编译器帮我们实现Clone trait了。</p>
-<h2 id="114-box-类型">11.4 Box 类型</h2>
-<p>Box类型永远执行的是move语义，不能是copy语义。原因大家想想就可以明白，Rust中的copy语义就是浅复制。对于Box这样的类型而言，浅复制必然会造成二次释放问题。</p>
-<h3 id="1152-copy-的实现条件">11.5.2 Copy 的实现条件</h3>
-<p>并不是所有的类型都可以实现Copy trait。Rust规定，对于自定义类型，只有所有成员都实现了Copy trait，这个类型才有资格实现Copy trait。</p>
-<p>常见的数字类型、bool类型、共享借用指针&amp;，都是具有Copy属性的类型。而Box、Vec、可写借用指针&amp;mut等类型都是不具备Copy属性的类型。</p>
-<p>对于数组类型，如果它内部的元素类型是Copy，那么这个数组也是Copy类型。</p>
-<p>对于元组tuple类型，如果它的每一个元素都是Copy类型，那么这个tuple也是Copy类型。</p>
-<p>struct和enum类型不会自动实现Copy trait。只有当struct和enum内部的每个元素都是Copy类型时，编译器才允许我们针对此类型实现Copy trait。</p>
-<p>我们可以认为，Rust中只有POD（C++语言中的Plain Old Data）类型才有资格实现Copy trait。在Rust中，如果一个类型只包含POD数据类型的成员，并且没有自定义析构函数，那它就是POD类型。比如：整数、浮点数、只包含POD类型的数组等，都属于POD类型；而Box String Vec等不能按字节复制的类型，都不属于POD类型。但是，反过来讲，<em><strong>也并不是所有满足POD的类型都应该实现Copy trait，是否实现Copy取决于业务需求。</strong></em></p>
-<h2 id="116-析构函数">11.6 析构函数</h2>
-<p>在Rust中编写“析构函数”的办法是impl std：：ops：：Drop。</p>
-<p>对于具有多个局部变量的情况，析构函数的调用顺序是：先构造的后析构，后构造的先析构。因为局部变量存在于一个“栈”的结构中，要保持“先进后出”的策略。</p>
-<h3 id="1162-主动析构">11.6.2 主动析构</h3>
-<p>用户主动调用析构函数是非法的。编译器不允许手动调用析构函数。那么，我们怎样才能让局部变量在语句块结束前提前终止生命周期呢？办法是调用标准库中的std：：mem：：drop函数：</p>
-<pre><code class="language-rust">use std::mem::drop;
-
-fn main() {
-    let mut v = vec![1, 2, 3];         // &lt;--- v的生命周期开始
-    drop(v);                     // ---&gt; v的生命周期结束
-    v.push(4);                    // 错误的调用
-}
-</code></pre>
-<p>请注意：如果你用下划线来绑定一个变量，那么这个变量会当场执行析构，而不是等到当前语句块结束的时候再执行。下划线是特殊符号，不是普通标识符。</p>
-<p>注意区分，<code>std：：mem：：drop（）</code>函数和<code>std：：ops：：Drop：：drop（）</code>方法:</p>
-<ul>
-<li><code>std：：mem：：drop（）</code>函数是一个独立的函数，不是某个类型的成员方法，它由程序员主动调用，作用是使变量的生命周期提前结束；<code>std：：ops：：Drop：：drop（）</code>方法是一个trait中定义的方法，当变量的生命周期结束的时候，编译器会自动调用，手动调用是不允许的。</li>
-<li><code>std：：mem：：drop&lt;T&gt;（_x：T）</code>的参数类型是T，采用的是move语义；<code>std：：ops：：Drop：：drop（&amp;mut self）</code>的参数类型是 <code>&amp;mut Self</code>，采用的是可变借用。在析构函数调用过程中，我们还有机会读取或者修改此对象的属性。</li>
-</ul>
-<p><em><strong>需要强调的是，带有析构函数的类型都是不能满足Copy语义的。因为我们不能保证，对于带析构函数的类型，使用memcpy复制一个副本一定不会有内存安全问题。所以对于这种情况，编译器是直接禁止的。</strong></em></p>
-<h1 id="第十二章-借用和生命周期">第十二章 借用和生命周期</h1>
-<h3 id="1241-函数的生命周期标记">12.4.1 函数的生命周期标记</h3>
-<p>'static是一个特殊的生命周期，它代表的是这个程序从开始到结束的整个阶段，所以它比其他任何生命周期都长。这意味着，任意一个生命周期'a都满足'static：'a。</p>
-<h3 id="1242-类型的生命周期标记">12.4.2 类型的生命周期标记</h3>
-<p>如果在泛型约束中有where T：'a之类的条件，其意思是，类型T的所有生命周期参数必须大于等于'a。要特别说明的是，若是有where T：'static的约束，意思则是，类型T里面不包含任何指向短生命周期的借用指针，意思是要么完全不包含任何借用，要么可以有指向'static的借用指针。</p>
-<h2 id="125-省略生命周期标记">12.5 省略生命周期标记</h2>
-<p>省略的生命周期被自动补全的规则：</p>
-<ul>
-<li>每个带生命周期参数的输入参数，每个对应不同的生命周期参数；</li>
-<li>如果只有一个输入参数带生命周期参数，那么返回值的生命周期被指定为这个参数；</li>
-<li>如果有多个输入参数带生命周期参数，但其中有&amp;self、&amp;mut self，那么返回值的生命周期被指定为这个参数；</li>
-</ul>
-<h1 id="第十五章-内部可变性">第十五章 内部可变性</h1>
-<p>在某些情况下，我们的确需要在存在共享的情况下可变。为了让这种情况是可控的、安全的，Rust还设计了一种“内部可变性”（interior mutability）。</p>
-<p>常见的具备内部可变性特点的类型有Cell、RefCell、Mutex、RwLock、Atomic*  等。其中Cell和RefCell是只能用在单线程环境下的具备内部可变性的类型。</p>
-<h2 id="151-cell">15.1 Cell</h2>
-<p>Cell 的 get()方法接受的是&amp;self参数，返回的是T类型，它可以在保留之前Cell类型不变的情况下返回一个新的T类型变量，因此它要求T：Copy约束。每次调用它的时候，都相当于把内部数据memcpy了一份返回出去。</p>
-<h2 id="152-refcell">15.2 RefCell</h2>
-<p>Rust中提供了只读引用的类型有&amp;、Rc、Arc等指针，它们可以提供alias。</p>
-<p>Rust中提供了内部可变性的类型有Cell、RefCell、Mutex、RwLock以及Atomic* 系列类型等。这两类类型经常需要配合使用。</p>
-<p>如果你需要把一个类型T封装到内部可变性类型中去，要怎样选择Cell和RefCell呢？原则就是，如果你只需要整体性地存入、取出T，那么就选Cell。如果你需要有个可读写指针指向这个T修改它，那么就选RefCell。</p>
-<h1 id="第十六章-解引用">第十六章 解引用</h1>
-<h2 id="161-自定义解引用">16.1 自定义解引用</h2>
-<pre><code class="language-rust">impl ops::Deref for String {
-    type Target = str;
-
-    #[inline]
-    fn deref(&amp;self) -&gt; &amp;str {
-        unsafe { str::from_utf8_unchecked(&amp;self.vec) }
-    }
-}
-</code></pre>
-<p>如果说有变量s的类型为String，<code>*s</code> 的类型并不等于s.deref（）的类型。<code>*s</code>的类型实际上是Target，即str。<code>&amp;*s</code>的类型才是&amp;str。s.deref（）的类型为&amp;Target，即&amp;str。它们的关系见表:</p>
-<table>
-<thead>
-<tr>
-<th style="text-align:left">表达式</th>
-<th style="text-align:left">类型</th>
-<th style="text-align:left">表达式</th>
-<th style="text-align:left">类型</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td style="text-align:left">s</td>
-<td style="text-align:left">String</td>
-<td style="text-align:left">s.deref()</td>
-<td style="text-align:left">&amp;str</td>
-</tr>
-<tr>
-<td style="text-align:left">&amp;s</td>
-<td style="text-align:left">&amp;String</td>
-<td style="text-align:left"><code>*s</code></td>
-<td style="text-align:left">str</td>
-</tr>
-<tr>
-<td style="text-align:left">Deref::Target</td>
-<td style="text-align:left">str</td>
-<td style="text-align:left"><code>&amp;*s</code></td>
-<td style="text-align:left">&amp;str</td>
-</tr>
-<tr>
-<td style="text-align:left">Deref::deref()</td>
-<td style="text-align:left">&amp;str</td>
-<td style="text-align:left"></td>
-<td style="text-align:left"></td>
-</tr>
-</tbody>
-</table>
-<p>以上关系有点绕。关键是要理解，<code>*expr</code>的类型是Target，而deref（）方法返回的类型却是&amp;Target。</p>
-<p>标准库中有许多我们常见的类型实现了这个Deref操作符。比如<code>Vec&lt;T&gt;、String、Box&lt;T&gt;、Rc&lt;T&gt;、Arc&lt;T&gt;</code>等。它们都支持“解引用”操作。从某种意义上来说，它们都可以算做特种形式的“指针”（像胖指针一样，是带有额外元数据的指针，只是元数据不限制在usize范围内了）。我们可以把这些类型都称为“智能指针”。</p>
-<p>-<code>Box&lt;T&gt;</code>是“指针”，指向一个在堆上分配的对象；</p>
-<ul>
-<li><code>Vec&lt;T&gt;</code>是“指针”，指向一组同类型的顺序排列的堆上分配的对象，且携带有当前缓存空间总大小和元素个数大小的元数据；</li>
-<li>String是“指针”，指向的是一个堆上分配的字节数组，其中保存的内容是合法的utf8字符序列。且携带有当前缓存空间总大小和字符串实际长度的元数据。</li>
-</ul>
-<p>以上几个类型都对所指向的内容拥有所有权，管理着它们所指向的内存空间的分配和释放。</p>
-<ul>
-<li><code>Rc&lt;T&gt;</code>和<code>Arc&lt;T&gt;</code>也是某种形式的、携带了额外元数据的“指针”，它们提供的是一种“共享”的所有权，当所有的引用计数指针都销毁之后，它们所指向的内存空间才会被释放。</li>
-</ul>
-<p>自定义解引用操作符可以让用户自行定义各种各样的“智能指针”，完成各种各样的任务。再配合上编译器的“自动”解引用机制，非常有用。下面我们讲解什么是“自动解引用”。</p>
-<h2 id="162-自动解引用">16.2 自动解引用</h2>
-<p>自动deref的规则是，如果类型T可以解引用为U，即<code>T：Deref&lt;U&gt;</code>，则&amp;T可以转为&amp;U。</p>
-<p><code>&amp;*</code>两个操作符连写跟分开写是不同的含义。以下两种写法是不同的：</p>
-<pre><code class="language-rust">// fn joint（）是可以直接编译通过的
-fn joint() {
-    let s = Box::new(String::new());
-    let p = &amp;*s;
-    println!(&quot;{} {}&quot;, p, s);
-}
-// fn separate（）是不能编译通过的。
-fn separate() {
-    let s = Box::new(String::new());
-    let tmp = *s;
-    let p = &amp;tmp;
-    println!(&quot;{} {}&quot;, p, s);
-}
-
-fn main() {
-    joint();
-    separate();
-}
-</code></pre>
-<p>fn joint（）是可以直接编译通过的，而fn separate（）是不能编译通过的。因为编译器很聪明，它看到<code>&amp;*</code>这两个操作连在一起的时候，会直接把<code>&amp;*s</code>表达式理解为<code>s.deref（）</code>，这时候p只是s的一个借用而已。而如果把这两个操作分开写，会先执行<code>*s</code>把内部的数据move出来，再对这个临时变量取引用，这时候s已经被移走了，生命周期已经结束。</p>
-<p>同样的，<code>let p=&amp;{*s}；</code>这种写法也编译不过。这个花括号的存在创建了一个临时的代码块，在这个临时代码块内部先执行解引用，同样是move语义。</p>
-<p>从这里我们也可以看到，默认的“取引用”、“解引用”操作是互补抵消的关系，互为逆运算。但是，在Rust中，只允许自定义“解引用”，不允许自定义“取引用”。如果类型有自定义“解引用”，那么对它执行“解引用”和“取引用”就不再是互补抵消的结果了。<code>先&amp;后*</code>以及<code>先*后&amp;</code>的结果是不同的。</p>
-<h2 id="165-智能指针">16.5 智能指针</h2>
-<p>Cell类型提供了一种类似C++的mutable关键字的能力，使我们可以通过不可变指针修改复合数据类型内部的某一个成员变量。</p>
-<h3 id="1652-cow">16.5.2 Cow</h3>
-<p>在C++语境中，Cow代表的是Copy-On-Write，即“写时复制技术”。它是一种高效的资源管理手段。假设我们有一份比较昂贵的资源，当我们需要复制的时候，我们可以采用“浅复制”的方式，而不需要重新克隆一份新的资源。而如果要修改复制之后的值，这时候再执行深复制，在此基础上修改。因此，它的优点是把克隆这个操作推迟到真正需要“复制并写操作”的时候发生。</p>
-<h2 id="166-小结">16.6 小结</h2>
-<p><strong><em>“取引用”操作符，如&amp;、&amp;mut，是不允许重载的。因此，“取引用”和“解引用”并非对称互补关系。</em>&amp;T的类型一定是T，而&amp;<em>T的类型未必就是T。</em></strong></p>
-<h1 id="第二十二章-闭包">第二十二章 闭包</h1>
-<h2 id="222-move-关键字">22.2 move 关键字</h2>
-<p>move关键字可以改变闭包捕获变量的方式，一般用于闭包需要传递到函数外部（escaping closure）的情况。</p>
-<h2 id="223-fnfnmutfnonce">22.3 Fn/FnMut/FnOnce</h2>
-<p>这几个trait的主要区别在于，被调用的时候self参数的类型。FnOnce被调用的时候，self是通过move的方式传递的，因此它被调用之后，这个闭包的生命周期就已经结束了，它只能被调用一次；FnMut被调用的时候，self是&amp;mut Self类型，有能力修改当前闭包本身的成员，甚至可能通过成员中的引用，修改外部的环境变量；Fn被调用的时候，self是&amp;Self类型，只有读取环境变量的能力。</p>
-<p>那么，对于一个闭包，编译器是如何选择impl哪个trait呢？答案是，编译器会都尝试一遍，实现能让程序编译通过的那几个。闭包调用的时候，会尽可能先选择调用fn call（&amp;self，args：Args）函数，其次尝试选择fn call_mut（&amp;self，args：Args）函数，最后尝试使用fn call_once（self，args：Args）函数。这些都是编译器自动分析出来的。</p>
-<h1 id="第二十三章-动态分派和静态分派">第二十三章 动态分派和静态分派</h1>
-<p>所谓“静态分派”，是指具体调用哪个函数，在编译阶段就确定下来了。Rust中的“静态分派”靠泛型以及impl trait来完成。对于不同的泛型类型参数，编译器会生成不同版本的函数，在编译阶段就确定好了应该调用哪个函数。</p>
-<p>所谓“动态分派”，是指具体调用哪个函数，在执行阶段才能确定。Rust中的“动态分派”靠Trait Object来完成。Trait Object本质上是指针，它可以指向不同的类型；指向的具体类型不同，调用的方法也就不同。</p>
-<h2 id="232-object-safe">23.2 object safe</h2>
-<p>在以下条件下trait object是无法构造出来的：</p>
-<ol>
-<li>当trait有Self：Sized约束时</li>
-<li>当函数中有Self类型作为参数或者返回类型时</li>
-<li>当函数第一个参数不是self时</li>
-<li>当函数有泛型参数时</li>
-</ol>
-<h1 id="第二十四章-容器与迭代器">第二十四章 容器与迭代器</h1>
-<h3 id="2422-迭代器的组合">24.2.2 迭代器的组合</h3>
-<p>Rust标准库有一个命名规范，从容器创造出迭代器一般有三种方法：</p>
-<ul>
-<li>iter（）创造一个Item是&amp;T类型的迭代器；</li>
-<li>iter_mut（）创造一个Item是&amp;mut T类型的迭代器；</li>
-<li>into_iter（）创造一个Item是T类型的迭代器。</li>
-</ul>
-<p>在使用for循环的时候，我们可以自主选择三种使用方式：</p>
-<pre><code class="language-rust">// container在循环之后生命周期就结束了,循环过程中的每个item是从container中move出来的
-for item in container {}
-// 迭代器中只包含container的&amp;型引用,循环过程中的每个item都是container中元素的借用
-for item in &amp;container {}
-// 迭代器中包含container的&amp;mut型引用,循环过程中的每个item都是指向container中元素的可变借用
-for item in &amp;mut container {}
-</code></pre>
-<h1 id="第二十六章-标准库简介">第二十六章 标准库简介</h1>
-<h3 id="2611-asrefasmut">26.1.1 AsRef/AsMut</h3>
-<ul>
-<li>AsRef这个trait代表的意思是，这个类型可以通过调用as_ref方法，得到另外一个类型的共享引用。</li>
-<li>同理，AsMut有一个as_mut方法，可以得到另外一个类型的可读写引用</li>
-</ul>
-<h3 id="2612-borrowborrowmut">26.1.2 Borrow/BorrowMut</h3>
-<p>Borrow这个trait设计得与AsRef非常像。</p>
-<p>要求borrow（）方法返回的类型，必须和原来的类型具备同样的hash值，以及排序。这是一个约定，如果实现Borrow trait的时候违反了这个约定，那么把这个类型放到HashMap或者BTreeMap里面的时候就可能出现问题。</p>
-<h3 id="2613-frominto">26.1.3 From/Into</h3>
-<p>AsRef/Borrow做的类型转换都是从一种引用&amp;T到另一种引用&amp;U的转换。而From/Into做的则是从任意类型T到U的类型转换</p>
-<h3 id="2614-toowned">26.1.4 ToOwned</h3>
-<p>ToOwned trait提供的是一种更“泛化”的Clone的功能。Clone一般是从&amp;T类型变量创造一个新的T类型变量，而ToOwned一般是从一个&amp;T类型变量创造一个新的U类型变量。</p>
-<h3 id="2615-tostringfromstr">26.1.5 ToString/FromStr</h3>
-<p>ToString trait提供了其他类型转换为String类型的能力。一般情况下，我们不需要自己为自定义类型实现ToString trait。因为标准库中已经提供了一个默认实现</p>
-<p>FromStr则提供了从字符串切片&amp;str向其他类型转换的能力。因为这个转换过程可能出错，所以from_str方法的返回类型被设计为Result。</p>
-<h2 id="264-any">26.4 Any</h2>
-<p>Rust标准库中提供了一个乞丐版的“反射”功能，那就是std：：any模块。这个模块内，有个trait名字叫作Any。所有的类型都自动实现了Any这个trait，因此我们可以把任何一个对象的引用转为&amp;Any这个trait object，然后调用它的方法。</p>
-<p>它可以判断这个对象是什么类型，以及强制转换&amp;Any为某个具体类型。另外，成员函数get_type_id（）暂时要求'static约束，这个限制条件以后会放宽。</p>
-<h1 id="第二十七章-线程安全">第二十七章 线程安全</h1>
-<h2 id="273-免数据竞争">27.3 免数据竞争</h2>
-<p>怎样做才能让一个变量在不同线程中共享呢？</p>
-<ul>
-<li>答案是：我们没有办法在多线程中直接读写普通的共享变量，除非使用Rust提供的线程安全相关的设施。</li>
-</ul>
-<h2 id="274-sendsync">27.4 Send&amp;Sync</h2>
-<p>Rust是如何实现免疫数据竞争的。Rust线程安全背后的功臣是两个特殊的trait。</p>
-<ul>
-<li>std：：marker：：Sync     如果类型T实现了Sync类型，那说明在不同的线程中使用&amp;T访问同一个变量是安全的。</li>
-<li>std：：marker：：Send     如果类型T实现了Send类型，那说明这个类型的变量在不同的线程中传递所有权是安全的。</li>
-</ul>
-<h1 id="第三十三章-错误处理">第三十三章 错误处理</h1>
-<h2 id="333-问号运算符">33.3 问号运算符</h2>
-<p>问号运算符意思是，如果结果是Err，则提前返回，否则继续执行。</p>
-<p>标准库中已经为Option、Result两个类型实现了问号运算符</p>
 ]]></content>
     </entry>
 </feed>
