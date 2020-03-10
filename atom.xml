@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://caedmonx.github.io/</id>
     <title>Caedmon&apos;s Blog</title>
-    <updated>2020-03-10T03:45:04.617Z</updated>
+    <updated>2020-03-10T13:28:38.980Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://caedmonx.github.io/"/>
     <link rel="self" href="https://caedmonx.github.io/atom.xml"/>
@@ -210,7 +210,7 @@ fn new_inner(config: Config&lt;M::Connection, M::Error&gt;, manager: M, reaper_r
         shared
         .config
         .thread_pool
-        
+        // 定期执行清理数据库连接对象的任务
         .execute_at_fixed_rate(reaper_rate, reaper_rate,
             move || reap_connections(&amp;s));
     }
