@@ -1,0 +1,407 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Caedmon</title>
+<meta name="description" content="温故而知新" />
+<link rel="shortcut icon" href="https://caedmonx.github.io/favicon.ico?v=1669196159958">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.7.2/animate.min.css">
+
+<link rel="stylesheet" href="https://caedmonx.github.io/styles/main.css">
+
+
+
+  </head>
+  <body>
+    <div id="app" class="main px-4 flex flex-col lg:flex-row">
+      <div id="sidebar" class="sidebar-wrapper lg:static lg:w-1/4">
+  <div class="lg:sticky top-0">
+    <div class="sidebar-content">
+      <div class="flex lg:block p-4 lg:px-0 items-center fixed lg:static lg:block top-0 right-0 left-0 bg-white z-50">
+        <i class="ri-menu-2-line lg:mt-4 text-2xl cursor-pointer animated fadeIn" onclick="openMenu()"></i>
+        <a href="https://caedmonx.github.io">
+          <img class="animated fadeInLeft avatar rounded-lg mx-4 lg:mt-32 lg:mx-0 mt-0 lg:w-24 lg:h-24 w-12 w-12" src="https://caedmonx.github.io/images/avatar.png?v=1669196159958" alt="">
+        </a>
+        <h1 class="animated fadeInLeft lg:text-4xl font-extrabold lg:mt-8 mt-0 text-xl" style="animation-delay: 0.2s">Caedmon</h1>
+      </div>
+      
+        <div class="animated fadeInLeft" style="animation-delay: 0.4s">
+          <p class="my-4 text-gray-600 font-light hidden lg:block">
+            文章目录
+          </p>
+          <div class="toc-container hidden lg:block">
+            <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#%E4%BB%80%E4%B9%88%E6%98%AF%E4%B8%AD%E6%96%ADinterrupt">什么是中断（interrupt）？</a></li>
+<li><a href="#%E4%B8%AD%E6%96%AD%E7%9A%84%E4%BD%9C%E7%94%A8">中断的作用</a></li>
+<li><a href="#%E4%B8%AD%E6%96%AD%E6%9C%BA%E5%88%B6%E7%9A%84%E5%9F%BA%E6%9C%AC%E5%B7%A5%E4%BD%9C%E5%8E%9F%E7%90%86">中断机制的基本工作原理</a></li>
+<li><a href="#java-%E4%B8%AD%E5%AF%B9%E7%BA%BF%E7%A8%8B%E7%9A%84%E4%B8%AD%E6%96%AD">Java 中对线程的中断</a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      
+    </div>
+  </div>
+</div>
+
+<div class="menu-container">
+  <i class="ri-arrow-left-line text-2xl cursor-pointer animated fadeIn close-menu-btn" onclick="closeMenu()"></i>
+  <div>
+    
+      
+        <a href="/" class="menu" style="animation-delay: 0s">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu" style="animation-delay: 0.2s">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu" style="animation-delay: 0.4s">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu" style="animation-delay: 0.6000000000000001s">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="site-footer">
+    <div class="py-4 text-gray-700">Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a></div>
+    <a class="rss" href="https://caedmonx.github.io/atom.xml" target="_blank">RSS</a>
+  </div>
+</div>
+<div class="mask" onclick="closeMenu()">
+</div>
+      <div class="content-wrapper py-32 lg:p-8 lg:w-3/4 post-detail animated fadeIn">
+        <h1 class="text-3xl font-bold lg:mt-16">操作系统概念-中断</h1>
+        <div class="text-sm text-gray-700 lg:my-8">
+          2022-08-16 / 5 min read
+        </div>
+        
+        <div class="post-content yue">
+          <h2 id="什么是中断interrupt">什么是中断（interrupt）？</h2>
+<p>中断是外部设备向处理器发起的请求事件。其本质是处理器对外开放的实时受控接口。</p>
+<h2 id="中断的作用">中断的作用</h2>
+<p>中断用来通知事件的发生，将控制转移到合适的中断服务程序。</p>
+<p>事件发生通常通过硬件或软件的中断来通知。硬件可以随时通过系统总线发送信号到 CPU，以触发中断。软件也可以通过执行**系统调用（system call）**来触发中断。</p>
+<p>当 CPU 被中断时，它停止正在做的事，并立即转到固定位置再继续执行。该固定位置通常包含中断服务程序的开始地址。中断服务程序开始执行，在执行完后，CPU 重新执行被中断的计算。这一运行的时间表如下图所示：</p>
+<figure data-type="image" tabindex="1"><img src="https://images-caedmon.oss-cn-chengdu.aliyuncs.com/uPic/2022-08/1660637279-image-20220816160759286.png" alt="image-20220816160759286" loading="lazy"></figure>
+<h2 id="中断机制的基本工作原理">中断机制的基本工作原理</h2>
+<p>CPU 硬件有一条线，称作中断请求线（Interrupt-Request Line, IRL）；CPU 在执行完每条指令后，都会检测IRL。当 CPU 检测到控制器已在IRL上发出了一个信号时，CPU 执行状态保存并且跳到内存固定位置的中断处理程序（interrupt-handler routine）。中断处理程序确定中断原因，执行必要处理，执行状态恢复，并且执行返回中断指令以便 CPU 回到中断前的执行状态。我们说，设备控制器通过中断请求线发送信号而<strong>引起</strong>中断，CPU<strong>捕获</strong>中断并且<strong>分派</strong>到中断处理程序，中断处理程序通过处理设备来<strong>清除</strong>中断。</p>
+<blockquote>
+<p>现代操作系统提供了更为复杂的中断处理功能。包括：1）在关键处理时，需要能够延迟中断处理；2）提供一种有效方式，以便分派中断到合适的中断处理程序，而无需首先轮询所有设备才能看到哪个引起了中断；3）提供多级中断，以便操作系统能够区分高优先级或低优先级的中断，能够根据紧迫性的程度来响应。</p>
+</blockquote>
+<h2 id="java-中对线程的中断">Java 中对线程的中断</h2>
+<p>在 Java 中，如果要停止某个线程，可以调用线程的中断方法，但这不一定会生效。</p>
+<p>线程中断是给目标线程发送一个中断信号，如果目标线程没有接收线程中断的信号并结束线程，线程则不会终止，具体是否退出或者执行其他逻辑由目标线程决定。<br>
+我们来看下线程中断最重要的 3 个方法，它们都是来自 Thread 类！</p>
+<ul>
+<li>
+<p><strong>java.lang.Thread#interrupt</strong></p>
+<p>中断目标线程，给目标线程发一个中断信号，线程被打上中断标记。</p>
+</li>
+<li>
+<p><strong>java.lang.Thread#isInterrupted()</strong></p>
+<p>判断目标线程是否被中断，不会清除中断标记。</p>
+</li>
+<li>
+<p><strong>java.lang.Thread#interrupted</strong></p>
+<p>判断目标线程是否被中断，会清除中断标记。</p>
+</li>
+</ul>
+<p>以下是对 java 线程中断机制的部分测试：</p>
+<pre><code class="language-java">/**
+ * thread 线程会被中断吗？
+ * 答案：不会，因为虽然给线程发出了中断信号，但程序中并没有响应中断信号的逻辑，所以程序不会有任何反应。
+ */
+@Test
+public void test1() {
+    Thread thread = new Thread(() -&gt; {
+        int count = 0;
+        while (true) {
+            System.out.println(&quot;count = &quot; + count++);
+            Thread.yield();
+        }
+    });
+    thread.start();
+    thread.interrupt();
+    sleep(3);
+}
+
+/**
+ * 中断成功。
+ * thread 加上了响应中断的逻辑，程序接收到中断信号打印出信息后返回退出。
+ */
+@Test
+public void test2() {
+    Thread thread = new Thread(() -&gt; {
+        int count = 0;
+        while (true) {
+            System.out.println(&quot;count = &quot; + count++);
+            Thread.yield();
+            // 响应中断
+            if (Thread.currentThread().isInterrupted()) {
+                System.out.println(&quot;线程被中断，程序退出。&quot;);
+                return;
+            }
+        }
+    });
+    thread.start();
+    thread.interrupt();
+    sleep(3);
+}
+
+/**
+ * 中断失败。
+ * sleep() 方法被中断，并输出了 线程休眠被中断，程序退出。 程序继续运行……
+ * 为什么呢？
+ * 查看 sleep 的源码可知，sleep() 方法被中断后会清除中断标记，所以循环会继续运行。。
+ */
+@Test
+public void test3() throws InterruptedException {
+    Thread thread = new Thread(() -&gt; {
+        int count = 0;
+        while (true) {
+            System.out.println(&quot;count = &quot; + count++);
+            // 响应中断
+            if (Thread.currentThread().isInterrupted()) {
+                System.out.println(&quot;线程被中断，程序退出。&quot;);
+                return;
+            }
+
+            try {
+                Thread.sleep(3000);
+            } catch (InterruptedException e) {
+                System.out.println(&quot;线程休眠被中断，程序退出。&quot;);
+            }
+        }
+    });
+    thread.start();
+    Thread.sleep(2000);
+    thread.interrupt();
+    sleep(10);
+}
+
+/**
+ * 中断成功。
+ * 全部信息输出并正常退出，在 sleep() 方法被中断并清除标记后手动重新中断当前线程，
+ * 然后程序接收中断信号返回退出。
+ */
+@Test
+public void test4() throws InterruptedException {
+    Thread thread = new Thread(() -&gt; {
+        int count = 0;
+        while (true) {
+            System.out.println(&quot;count = &quot; + count++);
+            // 响应中断
+            if (Thread.currentThread().isInterrupted()) {
+                System.out.println(&quot;线程被中断，程序退出。&quot;);
+                return;
+            }
+
+            try {
+                Thread.sleep(3000);
+            } catch (InterruptedException e) {
+                System.out.println(&quot;线程休眠被中断，程序退出。&quot;);
+                Thread.currentThread().interrupt();
+            }
+        }
+    });
+    thread.stop();
+    thread.start();
+    Thread.sleep(2000);
+    thread.interrupt();
+    sleep(10);
+}
+
+/**
+ * 休眠指定时长，避免因为执行测试类的主线程退出导致部分线程活动无法观察
+ */
+private void sleep(int secs) {
+    try {
+        TimeUnit.SECONDS.sleep(secs);
+    } catch (InterruptedException e) {
+        throw new RuntimeException(e);
+    }
+}
+</code></pre>
+
+        </div>
+
+        
+          <a class="animated fadeInUp p-2 items-center text-sm text-gray-700 border hover:bg-gray-300 leading-none rounded-full flex lg:inline-flex m-4 " href="https://caedmonx.github.io/tag/8JxclTgIZ/">
+            <span class="flex-auto">操作系统</span>
+          </a>
+        
+
+
+        <div class="flex justify-between py-8">
+          
+            <div class="prev-post">
+              <a href="https://caedmonx.github.io/post/nei-cun-dui-qi/">
+                <h3 class="post-title">
+                  <i class="ri-arrow-left-line"></i>
+                  内存对齐
+                </h3>
+              </a>
+            </div>
+          
+
+          
+            <div class="next-post">
+              <a href="https://caedmonx.github.io/post/rust-yi-bu-shu-4-yi-wen/">
+                <h3 class="post-title">
+                  Rust异步书4译文
+                  <i class="ri-arrow-right-line"></i>
+                </h3>
+              </a>
+            </div>
+          
+        </div>
+
+        
+          
+            <link rel="stylesheet" href="https://unpkg.com/gitalk/dist/gitalk.css">
+<script src="https://unpkg.com/gitalk/dist/gitalk.min.js"></script>
+
+<div id="gitalk-container"></div>
+
+<script>
+
+  var gitalk = new Gitalk({
+    clientID: 'c156a46b4028f9147223',
+    clientSecret: '3edfa6353ae2e8cb281297e7ffa7fa84a3e13041',
+    repo: 'caedmonx.github.io',
+    owner: 'caedmonx',
+    admin: ['caedmonx'],
+    id: (location.pathname).substring(0, 49),      // Ensure uniqueness and length less than 50
+    distractionFreeMode: false  // Facebook-like distraction free mode
+  })
+
+  gitalk.render('gitalk-container')
+
+</script>
+
+          
+
+          
+        
+
+      </div>
+    </div>
+
+    <script src="https://caedmonx.github.io/media/prism.js"></script>  
+<script>
+
+Prism.highlightAll()
+let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+// This should probably be throttled.
+// Especially because it triggers during smooth scrolling.
+// https://lodash.com/docs/4.17.10#throttle
+// You could do like...
+// window.addEventListener("scroll", () => {
+//    _.throttle(doThatStuff, 100);
+// });
+// Only not doing it here to keep this Pen dependency-free.
+
+window.addEventListener("scroll", event => {
+  let fromTop = window.scrollY;
+
+  mainNavLinks.forEach((link, index) => {
+    let section = document.getElementById(decodeURI(link.hash).substring(1));
+    let nextSection = null
+    if (mainNavLinks[index + 1]) {
+      nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+    }
+    if (section.offsetTop <= fromTop) {
+      if (nextSection) {
+        if (nextSection.offsetTop > fromTop) {
+          link.classList.add("current");
+        } else {
+          link.classList.remove("current");    
+        }
+      } else {
+        link.classList.add("current");
+      }
+    } else {
+      link.classList.remove("current");
+    }
+  });
+});
+
+
+document.addEventListener("DOMContentLoaded", function() {
+  var lazyImages = [].slice.call(document.querySelectorAll(".post-feature-image.lazy"));
+
+  if ("IntersectionObserver" in window) {
+    let lazyImageObserver = new IntersectionObserver(function(entries, observer) {
+      entries.forEach(function(entry) {
+        if (entry.isIntersecting) {
+          let lazyImage = entry.target
+          lazyImage.style.backgroundImage = `url(${lazyImage.dataset.bg})`
+          lazyImage.classList.remove("lazy")
+          lazyImageObserver.unobserve(lazyImage)
+        }
+      });
+    });
+
+    lazyImages.forEach(function(lazyImage) {
+      lazyImageObserver.observe(lazyImage)
+    })
+  } else {
+    // Possibly fall back to a more compatible method here
+  }
+});
+
+const menuContainer = document.querySelector('.menu-container')
+const menus = document.querySelectorAll('.menu-container .menu')
+const mask = document.querySelector('.mask')
+const contentWrapper = document.querySelector('.content-wrapper')
+const latestArticle = document.querySelector('.latest-article')
+const readMore = document.querySelector('.read-more')
+const indexPage = document.querySelector('.index-page')
+
+const isHome = location.pathname === '/'
+if (latestArticle) {
+  latestArticle.style.display = isHome ? 'block' : 'none'
+  readMore.style.display = isHome ? 'block' : 'none'
+  indexPage.style.display = isHome ? 'none' : 'block'
+}
+
+const openMenu = () => {
+  menuContainer.classList.add('open')
+  menus.forEach(menu => {
+    menu.classList.add('animated', 'fadeInLeft')
+  })
+  mask.classList.add('open')
+  contentWrapper.classList.add('is-second')
+}
+
+const closeMenu = () => {
+  menuContainer.classList.remove('open')
+  menus.forEach(menu => {
+    menu.classList.remove('animated', 'fadeInLeft')
+  })
+  mask.classList.remove('open')
+  contentWrapper.classList.remove('is-second')
+}
+</script>
+  
+  </body>
+</html>

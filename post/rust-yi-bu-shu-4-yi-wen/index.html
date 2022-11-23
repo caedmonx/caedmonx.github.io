@@ -1,0 +1,733 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Caedmon</title>
+<meta name="description" content="温故而知新" />
+<link rel="shortcut icon" href="https://caedmonx.github.io/favicon.ico?v=1669196159958">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.7.2/animate.min.css">
+
+<link rel="stylesheet" href="https://caedmonx.github.io/styles/main.css">
+
+
+
+  </head>
+  <body>
+    <div id="app" class="main px-4 flex flex-col lg:flex-row">
+      <div id="sidebar" class="sidebar-wrapper lg:static lg:w-1/4">
+  <div class="lg:sticky top-0">
+    <div class="sidebar-content">
+      <div class="flex lg:block p-4 lg:px-0 items-center fixed lg:static lg:block top-0 right-0 left-0 bg-white z-50">
+        <i class="ri-menu-2-line lg:mt-4 text-2xl cursor-pointer animated fadeIn" onclick="openMenu()"></i>
+        <a href="https://caedmonx.github.io">
+          <img class="animated fadeInLeft avatar rounded-lg mx-4 lg:mt-32 lg:mx-0 mt-0 lg:w-24 lg:h-24 w-12 w-12" src="https://caedmonx.github.io/images/avatar.png?v=1669196159958" alt="">
+        </a>
+        <h1 class="animated fadeInLeft lg:text-4xl font-extrabold lg:mt-8 mt-0 text-xl" style="animation-delay: 0.2s">Caedmon</h1>
+      </div>
+      
+        <div class="animated fadeInLeft" style="animation-delay: 0.4s">
+          <p class="my-4 text-gray-600 font-light hidden lg:block">
+            文章目录
+          </p>
+          <div class="toc-container hidden lg:block">
+            <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#pinning">Pinning</a>
+<ul>
+<li><a href="#why-pinning">Why Pinning</a></li>
+<li><a href="#pinning-in-detail">Pinning in Detail</a></li>
+<li><a href="#pinning-in-practice">Pinning in Practice</a></li>
+<li><a href="#pinning-to-the-stack">Pinning to the stack</a></li>
+<li><a href="#pinning-to-the-heap">Pinning to the Heap</a></li>
+<li><a href="#summary">Summary</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      
+    </div>
+  </div>
+</div>
+
+<div class="menu-container">
+  <i class="ri-arrow-left-line text-2xl cursor-pointer animated fadeIn close-menu-btn" onclick="closeMenu()"></i>
+  <div>
+    
+      
+        <a href="/" class="menu" style="animation-delay: 0s">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu" style="animation-delay: 0.2s">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu" style="animation-delay: 0.4s">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu" style="animation-delay: 0.6000000000000001s">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="site-footer">
+    <div class="py-4 text-gray-700">Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a></div>
+    <a class="rss" href="https://caedmonx.github.io/atom.xml" target="_blank">RSS</a>
+  </div>
+</div>
+<div class="mask" onclick="closeMenu()">
+</div>
+      <div class="content-wrapper py-32 lg:p-8 lg:w-3/4 post-detail animated fadeIn">
+        <h1 class="text-3xl font-bold lg:mt-16">Rust异步书4译文</h1>
+        <div class="text-sm text-gray-700 lg:my-8">
+          2022-08-16 / 20 min read
+        </div>
+        
+        <div class="post-content yue">
+          <h2 id="pinning">Pinning</h2>
+<p>To poll futures, they must be pinned using a special type called <code>Pin&lt;T&gt;</code>. If you read the explanation of <a href="https://rust-lang.github.io/async-book/02_execution/02_future.html">the <code>Future</code> trait</a> in the previous section <a href="https://rust-lang.github.io/async-book/02_execution/01_chapter.html">&quot;Executing <code>Future</code>s and Tasks&quot;</a>, you'll recognize <code>Pin</code> from the <code>self: Pin&lt;&amp;mut Self&gt;</code> in the <code>Future::poll</code> method's definition. But what does it mean, and why do we need it?</p>
+<blockquote>
+<p>要轮询future，必须使用称为 Pin<T> 的特殊类型固定它们。 如果您阅读了上一节“执行 Futures 和任务”中对 Future 特征的解释，您将在 Future::poll 方法的定义中从 self: Pin&lt;&amp;mut Self&gt; 中识别 Pin。 但它是什么意思，为什么我们需要它？</p>
+</blockquote>
+<h3 id="why-pinning">Why Pinning</h3>
+<p><code>Pin</code> works in tandem with the <code>Unpin</code> marker. Pinning makes it possible to guarantee that an object implementing <code>!Unpin</code> won't ever be moved. To understand why this is necessary, we need to remember how <code>async</code>/<code>.await</code> works. Consider the following code:</p>
+<blockquote>
+<p>Pin 与 Unpin 标记配合使用。 Pinning 可以保证实现 !Unpin 的对象永远不会被移动。 要理解为什么这是必要的，我们需要记住 async/.await 是如何工作的。 考虑以下代码：</p>
+</blockquote>
+<pre><code class="language-rust">let fut_one = /* ... */;
+let fut_two = /* ... */;
+async move {
+    fut_one.await;
+    fut_two.await;
+}
+</code></pre>
+<p>Under the hood, this creates an anonymous type that implements <code>Future</code>, providing a <code>poll</code> method that looks something like this:</p>
+<blockquote>
+<p>在底层，这创建了一个实现 Future 的匿名类型，提供了一个看起来像这样的 poll 方法：</p>
+</blockquote>
+<pre><code class="language-rust">// The `Future` type generated by our `async { ... }` block
+struct AsyncFuture {
+    fut_one: FutOne,
+    fut_two: FutTwo,
+    state: State,
+}
+
+// List of states our `async` block can be in
+enum State {
+    AwaitingFutOne,
+    AwaitingFutTwo,
+    Done,
+}
+
+impl Future for AsyncFuture {
+    type Output = ();
+
+    fn poll(mut self: Pin&lt;&amp;mut Self&gt;, cx: &amp;mut Context&lt;'_&gt;) -&gt; Poll&lt;()&gt; {
+        loop {
+            match self.state {
+                State::AwaitingFutOne =&gt; match self.fut_one.poll(..) {
+                    Poll::Ready(()) =&gt; self.state = State::AwaitingFutTwo,
+                    Poll::Pending =&gt; return Poll::Pending,
+                }
+                State::AwaitingFutTwo =&gt; match self.fut_two.poll(..) {
+                    Poll::Ready(()) =&gt; self.state = State::Done,
+                    Poll::Pending =&gt; return Poll::Pending,
+                }
+                State::Done =&gt; return Poll::Ready(()),
+            }
+        }
+    }
+}
+</code></pre>
+<p>When <code>poll</code> is first called, it will poll <code>fut_one</code>. If <code>fut_one</code> can't complete, <code>AsyncFuture::poll</code> will return. Future calls to <code>poll</code> will pick up where the previous one left off. This process continues until the future is able to successfully complete.</p>
+<blockquote>
+<p>首次调用 poll 时，它将轮询 fut_one。 如果 fut_one 无法完成，AsyncFuture::poll 将返回。 future对 <code>poll</code> 的调用将在前一个中断的地方继续。 这个过程一直持续到future能够成功完成。</p>
+</blockquote>
+<p>However, what happens if we have an <code>async</code> block that uses references? For example:</p>
+<blockquote>
+<p>但是，如果我们有一个使用引用的异步块会发生什么？ 例如：</p>
+</blockquote>
+<pre><code class="language-rust">async {
+    let mut x = [0; 128];
+    let read_into_buf_fut = read_into_buf(&amp;mut x);
+    read_into_buf_fut.await;
+    println!(&quot;{:?}&quot;, x);
+}
+</code></pre>
+<p>What struct does this compile down to?</p>
+<blockquote>
+<p>这编译成什么结构？</p>
+</blockquote>
+<pre><code class="language-rust">struct ReadIntoBuf&lt;'a&gt; {
+    buf: &amp;'a mut [u8], // points to `x` below
+}
+
+struct AsyncFuture {
+    x: [u8; 128],
+    read_into_buf_fut: ReadIntoBuf&lt;'what_lifetime?&gt;,
+}
+</code></pre>
+<p>Here, the <code>ReadIntoBuf</code> future holds a reference into the other field of our structure, <code>x</code>. However, if <code>AsyncFuture</code> is moved, the location of <code>x</code> will move as well, invalidating the pointer stored in <code>read_into_buf_fut.buf</code>.</p>
+<blockquote>
+<p>在这里，ReadIntoBuf future持有对我们结构的另一个字段 x 的引用。 但是，如果 AsyncFuture 被移动，x 的位置也会移动，从而使 read_into_buf_fut.buf 中存储的指针无效。</p>
+</blockquote>
+<p>Pinning futures to a particular spot in memory prevents this problem, making it safe to create references to values inside an <code>async</code> block.</p>
+<blockquote>
+<p>将future固定到内存中的特定位置可以防止此问题，从而可以安全地在异步块内创建对值的引用。</p>
+</blockquote>
+<h3 id="pinning-in-detail">Pinning in Detail</h3>
+<p>Let's try to understand pinning by using an slightly simpler example. The problem we encounter above is a problem that ultimately boils down to how we handle references in self-referential types in Rust.</p>
+<blockquote>
+<p>让我们通过一个稍微简单的例子来尝试理解 pinning。 我们上面遇到的问题最终归结为我们如何在 Rust 中处理自引用类型中的引用。</p>
+</blockquote>
+<p>For now our example will look like this:</p>
+<blockquote>
+<p>现在，我们的示例将如下所示：</p>
+</blockquote>
+<pre><code class="language-rust">#[derive(Debug)]
+struct Test {
+    a: String,
+    b: *const String,
+}
+
+impl Test {
+    fn new(txt: &amp;str) -&gt; Self {
+        Test {
+            a: String::from(txt),
+            b: std::ptr::null(),
+        }
+    }
+
+    fn init(&amp;mut self) {
+        let self_ref: *const String = &amp;self.a;
+        self.b = self_ref;
+    }
+
+    fn a(&amp;self) -&gt; &amp;str {
+        &amp;self.a
+    }
+
+    fn b(&amp;self) -&gt; &amp;String {
+        assert!(!self.b.is_null(), &quot;Test::b called without Test::init being called first&quot;);
+        unsafe { &amp;*(self.b) }
+    }
+}
+</code></pre>
+<p><code>Test</code> provides methods to get a reference to the value of the fields <code>a</code> and <code>b</code>. Since <code>b</code> is a reference to <code>a</code> we store it as a pointer since the borrowing rules of Rust doesn't allow us to define this lifetime. We now have what we call a self-referential struct.</p>
+<blockquote>
+<p>测试提供了方法来获取对字段 a 和 b 的值的引用。 由于 b 是对 a 的引用，我们将其存储为指针，因为 Rust 的借用规则不允许我们定义此生命周期。 我们现在有了所谓的自引用结构。</p>
+</blockquote>
+<p>Our example works fine if we don't move any of our data around as you can observe by running this example:</p>
+<blockquote>
+<p>如果我们不移动任何数据，我们的示例可以正常工作，您可以通过运行此示例观察到：</p>
+</blockquote>
+<pre><code class="language-rust">fn main() {
+    let mut test1 = Test::new(&quot;test1&quot;);
+    test1.init();
+    let mut test2 = Test::new(&quot;test2&quot;);
+    test2.init();
+
+    println!(&quot;a: {}, b: {}&quot;, test1.a(), test1.b());
+    println!(&quot;a: {}, b: {}&quot;, test2.a(), test2.b());
+}
+</code></pre>
+<p>We get what we'd expect:</p>
+<blockquote>
+<p>我们得到了我们所期望的：</p>
+</blockquote>
+<pre><code class="language-shell">a: test1, b: test1
+a: test2, b: test2
+</code></pre>
+<p>Let's see what happens if we swap <code>test1</code> with <code>test2</code> and thereby move the data:</p>
+<blockquote>
+<p>让我们看看如果我们用测试 2 擦拭测试 1 从而移动数据会发生什么：</p>
+</blockquote>
+<pre><code class="language-rust">fn main() {
+    let mut test1 = Test::new(&quot;test1&quot;);
+    test1.init();
+    let mut test2 = Test::new(&quot;test2&quot;);
+    test2.init();
+
+    println!(&quot;a: {}, b: {}&quot;, test1.a(), test1.b());
+    std::mem::swap(&amp;mut test1, &amp;mut test2);
+    println!(&quot;a: {}, b: {}&quot;, test2.a(), test2.b());
+}
+</code></pre>
+<p>Naively, we could think that what we should get a debug print of <code>test1</code> two times like this:</p>
+<blockquote>
+<p>天真地，我们可以认为我们应该得到两次 test1 的调试打印，如下所示：</p>
+</blockquote>
+<pre><code class="language-shell">a: test1, b: test1
+a: test1, b: test1
+</code></pre>
+<p>But instead we get:</p>
+<blockquote>
+<p>但相反，我们得到：</p>
+</blockquote>
+<pre><code class="language-shell">a: test1, b: test1
+a: test1, b: test2
+</code></pre>
+<p>The pointer to <code>test2.b</code> still points to the old location which is inside <code>test1</code> now. The struct is not self-referential anymore, it holds a pointer to a field in a different object. That means we can't rely on the lifetime of <code>test2.b</code> to be tied to the lifetime of <code>test2</code> anymore.</p>
+<blockquote>
+<p>指向 test2.b 的指针仍然指向 test1 现在的旧位置。 该结构不再是自引用的，它包含一个指向不同对象中的字段的指针。 这意味着我们不能再依赖 test2.b 的生命周期与 test2 的生命周期相关联。</p>
+</blockquote>
+<p>If you're still not convinced, this should at least convince you:</p>
+<blockquote>
+<p>如果您仍然不相信，这至少应该说服您：</p>
+</blockquote>
+<pre><code class="language-rust">fn main() {
+    let mut test1 = Test::new(&quot;test1&quot;);
+    test1.init();
+    let mut test2 = Test::new(&quot;test2&quot;);
+    test2.init();
+
+    println!(&quot;a: {}, b: {}&quot;, test1.a(), test1.b());
+    std::mem::swap(&amp;mut test1, &amp;mut test2);
+    test1.a = &quot;I've totally changed now!&quot;.to_string();
+    println!(&quot;a: {}, b: {}&quot;, test2.a(), test2.b());
+}
+</code></pre>
+<p>打印结果：</p>
+<pre><code class="language-shell">a: test1, b: test1
+a: test1, b: I've totally changed now!
+</code></pre>
+<p>The diagram below can help visualize what's going on:</p>
+<blockquote>
+<p>下图可以帮助可视化正在发生的事情：</p>
+</blockquote>
+<figure data-type="image" tabindex="1"><img src="https://gitee.com/caedmonx/images/raw/master/uPic/2022-01/9LmNru.jpg" alt="swap_problem" loading="lazy"></figure>
+<p>It's easy to get this to show undefined behavior and fail in other spectacular ways as well.</p>
+<blockquote>
+<p>很容易让它显示未定义的行为并以其他惊人的方式失败。</p>
+</blockquote>
+<h3 id="pinning-in-practice">Pinning in Practice</h3>
+<p>Let's see how pinning and the <code>Pin</code> type can help us solve this problem.</p>
+<blockquote>
+<p>让我们看看 pinning 和 Pin 类型如何帮助我们解决这个问题。</p>
+</blockquote>
+<p>The <code>Pin</code> type wraps pointer types, guaranteeing that the values behind the pointer won't be moved. For example, <code>Pin&lt;&amp;mut T&gt;</code>, <code>Pin&lt;&amp;T&gt;</code>, <code>Pin&lt;Box&lt;T&gt;&gt;</code> all guarantee that <code>T</code> won't be moved even if <code>T: !Unpin</code>.</p>
+<blockquote>
+<p>Pin 类型包装了指针类型，保证指针后面的值不会被移动。 例如，Pin&lt;&amp;mut T&gt;、Pin&lt;&amp;T&gt;、Pin&lt;Box<T>&gt; 都保证即使 T: !Unpin 也不会移动 T。</p>
+</blockquote>
+<p>Most types don't have a problem being moved. These types implement a trait called <code>Unpin</code>. Pointers to <code>Unpin</code> types can be freely placed into or taken out of <code>Pin</code>. For example, <code>u8</code> is <code>Unpin</code>, so <code>Pin&lt;&amp;mut u8&gt;</code> behaves just like a normal <code>&amp;mut u8</code>.</p>
+<blockquote>
+<p>大多数类型在移动时都没有问题。 这些类型实现了一个称为 Unpin 的特征。 指向 Unpin 类型的指针可以自由地放入或取出 Pin。 例如，u8 是 Unpin，所以 Pin&lt;&amp;mut u8&gt; 的行为就像普通的 &amp;mut u8。</p>
+</blockquote>
+<p>However, types that can't be moved after they're pinned have a marker called <code>!Unpin</code>. Futures created by async/await is an example of this.</p>
+<blockquote>
+<p>但是，固定后无法移动的类型有一个名为 !Unpin 的标记。 async/await 创建的future就是一个例子。</p>
+</blockquote>
+<h3 id="pinning-to-the-stack">Pinning to the stack</h3>
+<p>Back to our example. We can solve our problem by using <code>Pin</code>. Let's take a look at what our example would look like if we required a pinned pointer instead:</p>
+<blockquote>
+<p>回到我们的例子。 我们可以通过使用 Pin 来解决我们的问题。 让我们看看如果我们需要一个固定指针，我们的示例会是什么样子：</p>
+</blockquote>
+<pre><code class="language-rust">use std::pin::Pin;
+use std::marker::PhantomPinned;
+
+#[derive(Debug)]
+struct Test {
+    a: String,
+    b: *const String,
+    _marker: PhantomPinned, // This makes our type `!Unpin`
+}
+
+impl Test {
+    fn new(txt: &amp;str) -&gt; Self {
+        Test {
+            a: String::from(txt),
+            b: std::ptr::null(),
+            _marker: PhantomPinned, // This makes our type `!Unpin`
+        }
+    }
+
+    fn init(self: Pin&lt;&amp;mut Self&gt;) {
+        let self_ptr: *const String = &amp;self.a;
+        let this = unsafe { self.get_unchecked_mut() };
+        this.b = self_ptr;
+    }
+
+    fn a(self: Pin&lt;&amp;Self&gt;) -&gt; &amp;str {
+        &amp;self.get_ref().a
+    }
+
+    fn b(self: Pin&lt;&amp;Self&gt;) -&gt; &amp;String {
+        assert!(!self.b.is_null(), &quot;Test::b called without Test::init being called first&quot;);
+        unsafe { &amp;*(self.b) }
+    }
+}
+</code></pre>
+<p>Pinning an object to the stack will always be <code>unsafe</code> if our type implements <code>!Unpin</code>. You can use a crate like <a href="https://docs.rs/pin-utils/"><code>pin_utils</code></a> to avoid writing our own <code>unsafe</code> code when pinning to the stack.</p>
+<blockquote>
+<p>如果我们的类型实现了!Unpin，那么将一个对象固定到栈上总是不安全的。 您可以使用 pin_utils 之类的 crate 来避免在固定到栈时编写我们自己的不安全代码。</p>
+</blockquote>
+<p>Below, we pin the objects <code>test1</code> and <code>test2</code> to the stack:</p>
+<blockquote>
+<p>下面，我们将对象 test1 和 test2 固定到堆栈中：</p>
+</blockquote>
+<pre><code class="language-rust">pub fn main() {
+    // test1 is safe to move before we initialize it
+    let mut test1 = Test::new(&quot;test1&quot;);
+    // Notice how we shadow `test1` to prevent it from being accessed again
+    let mut test1 = unsafe { Pin::new_unchecked(&amp;mut test1) };
+    Test::init(test1.as_mut());
+
+    let mut test2 = Test::new(&quot;test2&quot;);
+    let mut test2 = unsafe { Pin::new_unchecked(&amp;mut test2) };
+    Test::init(test2.as_mut());
+
+    println!(&quot;a: {}, b: {}&quot;, Test::a(test1.as_ref()), Test::b(test1.as_ref()));
+    println!(&quot;a: {}, b: {}&quot;, Test::a(test2.as_ref()), Test::b(test2.as_ref()));
+}
+</code></pre>
+<p>输出内容：</p>
+<pre><code class="language-shell">a: test1, b: test1
+a: test2, b: test2
+</code></pre>
+<p>Now, if we try to move our data now we get a compilation error:</p>
+<blockquote>
+<p>现在，如果我们现在尝试移动我们的数据，我们会得到一个编译错误：</p>
+</blockquote>
+<pre><code class="language-rust">pub fn main() {
+    let mut test1 = Test::new(&quot;test1&quot;);
+    let mut test1 = unsafe { Pin::new_unchecked(&amp;mut test1) };
+    Test::init(test1.as_mut());
+
+    let mut test2 = Test::new(&quot;test2&quot;);
+    let mut test2 = unsafe { Pin::new_unchecked(&amp;mut test2) };
+    Test::init(test2.as_mut());
+
+    println!(&quot;a: {}, b: {}&quot;, Test::a(test1.as_ref()), Test::b(test1.as_ref()));
+    std::mem::swap(test1.get_mut(), test2.get_mut());
+    println!(&quot;a: {}, b: {}&quot;, Test::a(test2.as_ref()), Test::b(test2.as_ref()));
+}
+</code></pre>
+<p>The type system prevents us from moving the data.</p>
+<blockquote>
+<p>类型系统阻止我们移动数据。</p>
+</blockquote>
+<p>It's important to note that stack pinning will always rely on guarantees you give when writing <code>unsafe</code>. While we know that the <em>pointee</em> of <code>&amp;'a mut T</code> is pinned for the lifetime of <code>'a</code> we can't know if the data <code>&amp;'a mut T</code> points to isn't moved after <code>'a</code> ends. If it does it will violate the Pin contract.</p>
+<blockquote>
+<p>重要的是要注意栈固定将始终依赖于您在编写unsafe代码时提供的保证。 虽然我们知道 &amp;'a mut T 的指针在 'a 的生命周期内被固定，但我们无法知道 &amp;'a mut T 指向的数据是否在 'a 结束后没有移动。 如果这样做，它将违反 Pin 合同。</p>
+</blockquote>
+<p>A mistake that is easy to make is forgetting to shadow the original variable since you could drop the <code>Pin</code> and move the data after <code>&amp;'a mut T</code> like shown below (which violates the Pin contract):</p>
+<blockquote>
+<p>一个容易犯的错误是忘记隐藏原始变量，因为您可以删除 Pin 并将数据移动到 &amp;'a mut T 之后，如下所示（这违反了 Pin 合同）：</p>
+</blockquote>
+<pre><code class="language-rust">fn main() {
+   let mut test1 = Test::new(&quot;test1&quot;);
+   let mut test1_pin = unsafe { Pin::new_unchecked(&amp;mut test1) };
+   Test::init(test1_pin.as_mut());
+
+   drop(test1_pin);
+   println!(r#&quot;test1.b points to &quot;test1&quot;: {:?}...&quot;#, test1.b);
+
+   let mut test2 = Test::new(&quot;test2&quot;);
+   mem::swap(&amp;mut test1, &amp;mut test2);
+   println!(&quot;... and now it points nowhere: {:?}&quot;, test1.b);
+}
+</code></pre>
+<h3 id="pinning-to-the-heap">Pinning to the Heap</h3>
+<p>Pinning an <code>!Unpin</code> type to the heap gives our data a stable address so we know that the data we point to can't move after it's pinned. In contrast to stack pinning, we know that the data will be pinned for the lifetime of the object.</p>
+<blockquote>
+<p>将 !Unpin 类型固定到堆中可以为我们的数据提供一个稳定的地址，因此我们知道我们指向的数据在固定后无法移动。 与栈固定相反，我们知道数据将在对象的生命周期内固定。</p>
+</blockquote>
+<pre><code class="language-rust">use std::pin::Pin;
+use std::marker::PhantomPinned;
+
+#[derive(Debug)]
+struct Test {
+    a: String,
+    b: *const String,
+    _marker: PhantomPinned,
+}
+
+impl Test {
+    fn new(txt: &amp;str) -&gt; Pin&lt;Box&lt;Self&gt;&gt; {
+        let t = Test {
+            a: String::from(txt),
+            b: std::ptr::null(),
+            _marker: PhantomPinned,
+        };
+        let mut boxed = Box::pin(t);
+        let self_ptr: *const String = &amp;boxed.as_ref().a;
+        unsafe { boxed.as_mut().get_unchecked_mut().b = self_ptr };
+
+        boxed
+    }
+
+    fn a(self: Pin&lt;&amp;Self&gt;) -&gt; &amp;str {
+        &amp;self.get_ref().a
+    }
+
+    fn b(self: Pin&lt;&amp;Self&gt;) -&gt; &amp;String {
+        unsafe { &amp;*(self.b) }
+    }
+}
+
+pub fn main() {
+    let test1 = Test::new(&quot;test1&quot;);
+    let test2 = Test::new(&quot;test2&quot;);
+
+    println!(&quot;a: {}, b: {}&quot;,test1.as_ref().a(), test1.as_ref().b());
+    println!(&quot;a: {}, b: {}&quot;,test2.as_ref().a(), test2.as_ref().b());
+}
+</code></pre>
+<p>Some functions require the futures they work with to be <code>Unpin</code>. To use a <code>Future</code> or <code>Stream</code> that isn't <code>Unpin</code> with a function that requires <code>Unpin</code> types, you'll first have to pin the value using either <code>Box::pin</code> (to create a <code>Pin&lt;Box&lt;T&gt;&gt;</code>) or the <code>pin_utils::pin_mut!</code> macro (to create a <code>Pin&lt;&amp;mut T&gt;</code>). <code>Pin&lt;Box&lt;Fut&gt;&gt;</code> and <code>Pin&lt;&amp;mut Fut&gt;</code> can both be used as futures, and both implement <code>Unpin</code>.</p>
+<blockquote>
+<p>某些功能要求它们使用的future是 Unpin。 要将非 Unpin 的 Future 或 Stream 与需要 Unpin 类型的函数一起使用，您首先必须使用 Box::pin（创建 Pin&lt;Box<T>&gt;）或 pin_utils::pin_mut！ 宏（创建一个 Pin&lt;&amp;mut T&gt;）。 Pin&lt;Box<Fut>&gt; 和 Pin&lt;&amp;mut Fut&gt; 都可以用作future，并且都实现了 Unpin。</p>
+</blockquote>
+<p>For example:</p>
+<blockquote>
+<p>例如：</p>
+</blockquote>
+<pre><code class="language-rust">use pin_utils::pin_mut; // `pin_utils` is a handy crate available on crates.io
+
+// A function which takes a `Future` that implements `Unpin`.
+fn execute_unpin_future(x: impl Future&lt;Output = ()&gt; + Unpin) { /* ... */ }
+
+let fut = async { /* ... */ };
+execute_unpin_future(fut); // Error: `fut` does not implement `Unpin` trait
+
+// Pinning with `Box`:
+let fut = async { /* ... */ };
+let fut = Box::pin(fut);
+execute_unpin_future(fut); // OK
+
+// Pinning with `pin_mut!`:
+let fut = async { /* ... */ };
+pin_mut!(fut);
+execute_unpin_future(fut); // OK
+</code></pre>
+<h3 id="summary">Summary</h3>
+<ol>
+<li>
+<p>If <code>T: Unpin</code> (which is the default), then <code>Pin&lt;'a, T&gt;</code> is entirely equivalent to <code>&amp;'a mut T</code>. in other words: <code>Unpin</code> means it's OK for this type to be moved even when pinned, so <code>Pin</code> will have no effect on such a type.</p>
+<blockquote>
+<p>如果 <code>T: Unpin</code>（这是默认值），则 <code>Pin&lt;'a, T&gt;</code> 完全等同于 <code>&amp;'a mut T</code>。 换句话说： <code>Unpin</code> 表示即使 pinned 也可以移动该类型，因此 <code>Pin</code> 对这种类型没有影响。</p>
+</blockquote>
+</li>
+<li>
+<p>Getting a <code>&amp;mut T</code> to a pinned T requires unsafe if <code>T: !Unpin</code>.</p>
+<blockquote>
+<p>如果 T: !Unpin，则将 &amp;mut T 转换为固定的 T 需要不安全。</p>
+</blockquote>
+</li>
+<li>
+<p>Most standard library types implement <code>Unpin</code>. The same goes for most &quot;normal&quot; types you encounter in Rust. A <code>Future</code> generated by async/await is an exception to this rule.</p>
+<blockquote>
+<p>大多数标准库类型都实现了 Unpin。 你在 Rust 中遇到的大多数“正常”类型也是如此。 async/await 生成的 Future 是此规则的一个例外。</p>
+</blockquote>
+</li>
+<li>
+<p>You can add a <code>!Unpin</code> bound on a type on nightly with a feature flag, or by adding <code>std::marker::PhantomPinned</code> to your type on stable.</p>
+<blockquote>
+<p>您可以在nightly版本中打开相关特性支持，从而可以添加 !Unpin 绑定到类型上，或者通过将 std::marker::PhantomPinned 添加到稳定的类型中。</p>
+</blockquote>
+</li>
+<li>
+<p>You can either pin data to the stack or to the heap.</p>
+<blockquote>
+<p>您可以将数据固定到堆栈或堆。</p>
+</blockquote>
+</li>
+<li>
+<p>Pinning a <code>!Unpin</code> object to the stack requires <code>unsafe</code></p>
+<blockquote>
+<p>将 !Unpin 对象固定到堆栈需要 unsafe</p>
+</blockquote>
+</li>
+<li>
+<p>Pinning a <code>!Unpin</code> object to the heap does not require <code>unsafe</code>. There is a shortcut for doing this using <code>Box::pin</code>.</p>
+<blockquote>
+<p>将 !Unpin 对象固定到堆上不需要unsafe。 使用 Box::pin 是一个快捷方式。</p>
+</blockquote>
+</li>
+<li>
+<p>For pinned data where <code>T: !Unpin</code> you have to maintain the invariant that its memory will not get invalidated or repurposed <em>from the moment it gets pinned until when drop</em> is called. This is an important part of the <em>pin contract</em>.</p>
+<blockquote>
+<p>对于 T: !Unpin 的固定数据，您必须保持其内存从固定到调用 drop 的那一刻不会失效或重新利用的不变量。 这是 pin 合约的重要组成部分。</p>
+</blockquote>
+</li>
+</ol>
+
+        </div>
+
+        
+          <a class="animated fadeInUp p-2 items-center text-sm text-gray-700 border hover:bg-gray-300 leading-none rounded-full flex lg:inline-flex m-4 " href="https://caedmonx.github.io/tag/BjAQKjRro/">
+            <span class="flex-auto">Rust</span>
+          </a>
+        
+
+
+        <div class="flex justify-between py-8">
+          
+            <div class="prev-post">
+              <a href="https://caedmonx.github.io/post/cao-zuo-xi-tong-gai-nian-zhong-duan/">
+                <h3 class="post-title">
+                  <i class="ri-arrow-left-line"></i>
+                  操作系统概念-中断
+                </h3>
+              </a>
+            </div>
+          
+
+          
+            <div class="next-post">
+              <a href="https://caedmonx.github.io/post/rust-yi-bu-shu-3-yi-wen/">
+                <h3 class="post-title">
+                  Rust异步书3译文
+                  <i class="ri-arrow-right-line"></i>
+                </h3>
+              </a>
+            </div>
+          
+        </div>
+
+        
+          
+            <link rel="stylesheet" href="https://unpkg.com/gitalk/dist/gitalk.css">
+<script src="https://unpkg.com/gitalk/dist/gitalk.min.js"></script>
+
+<div id="gitalk-container"></div>
+
+<script>
+
+  var gitalk = new Gitalk({
+    clientID: 'c156a46b4028f9147223',
+    clientSecret: '3edfa6353ae2e8cb281297e7ffa7fa84a3e13041',
+    repo: 'caedmonx.github.io',
+    owner: 'caedmonx',
+    admin: ['caedmonx'],
+    id: (location.pathname).substring(0, 49),      // Ensure uniqueness and length less than 50
+    distractionFreeMode: false  // Facebook-like distraction free mode
+  })
+
+  gitalk.render('gitalk-container')
+
+</script>
+
+          
+
+          
+        
+
+      </div>
+    </div>
+
+    <script src="https://caedmonx.github.io/media/prism.js"></script>  
+<script>
+
+Prism.highlightAll()
+let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+// This should probably be throttled.
+// Especially because it triggers during smooth scrolling.
+// https://lodash.com/docs/4.17.10#throttle
+// You could do like...
+// window.addEventListener("scroll", () => {
+//    _.throttle(doThatStuff, 100);
+// });
+// Only not doing it here to keep this Pen dependency-free.
+
+window.addEventListener("scroll", event => {
+  let fromTop = window.scrollY;
+
+  mainNavLinks.forEach((link, index) => {
+    let section = document.getElementById(decodeURI(link.hash).substring(1));
+    let nextSection = null
+    if (mainNavLinks[index + 1]) {
+      nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+    }
+    if (section.offsetTop <= fromTop) {
+      if (nextSection) {
+        if (nextSection.offsetTop > fromTop) {
+          link.classList.add("current");
+        } else {
+          link.classList.remove("current");    
+        }
+      } else {
+        link.classList.add("current");
+      }
+    } else {
+      link.classList.remove("current");
+    }
+  });
+});
+
+
+document.addEventListener("DOMContentLoaded", function() {
+  var lazyImages = [].slice.call(document.querySelectorAll(".post-feature-image.lazy"));
+
+  if ("IntersectionObserver" in window) {
+    let lazyImageObserver = new IntersectionObserver(function(entries, observer) {
+      entries.forEach(function(entry) {
+        if (entry.isIntersecting) {
+          let lazyImage = entry.target
+          lazyImage.style.backgroundImage = `url(${lazyImage.dataset.bg})`
+          lazyImage.classList.remove("lazy")
+          lazyImageObserver.unobserve(lazyImage)
+        }
+      });
+    });
+
+    lazyImages.forEach(function(lazyImage) {
+      lazyImageObserver.observe(lazyImage)
+    })
+  } else {
+    // Possibly fall back to a more compatible method here
+  }
+});
+
+const menuContainer = document.querySelector('.menu-container')
+const menus = document.querySelectorAll('.menu-container .menu')
+const mask = document.querySelector('.mask')
+const contentWrapper = document.querySelector('.content-wrapper')
+const latestArticle = document.querySelector('.latest-article')
+const readMore = document.querySelector('.read-more')
+const indexPage = document.querySelector('.index-page')
+
+const isHome = location.pathname === '/'
+if (latestArticle) {
+  latestArticle.style.display = isHome ? 'block' : 'none'
+  readMore.style.display = isHome ? 'block' : 'none'
+  indexPage.style.display = isHome ? 'none' : 'block'
+}
+
+const openMenu = () => {
+  menuContainer.classList.add('open')
+  menus.forEach(menu => {
+    menu.classList.add('animated', 'fadeInLeft')
+  })
+  mask.classList.add('open')
+  contentWrapper.classList.add('is-second')
+}
+
+const closeMenu = () => {
+  menuContainer.classList.remove('open')
+  menus.forEach(menu => {
+    menu.classList.remove('animated', 'fadeInLeft')
+  })
+  mask.classList.remove('open')
+  contentWrapper.classList.remove('is-second')
+}
+</script>
+  
+  </body>
+</html>

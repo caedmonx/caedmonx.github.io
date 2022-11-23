@@ -1,0 +1,388 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Caedmon</title>
+<meta name="description" content="温故而知新" />
+<link rel="shortcut icon" href="https://caedmonx.github.io/favicon.ico?v=1669196159958">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.7.2/animate.min.css">
+
+<link rel="stylesheet" href="https://caedmonx.github.io/styles/main.css">
+
+
+
+  </head>
+  <body>
+    <div id="app" class="main px-4 flex flex-col lg:flex-row">
+      <div id="sidebar" class="sidebar-wrapper lg:static lg:w-1/4">
+  <div class="lg:sticky top-0">
+    <div class="sidebar-content">
+      <div class="flex lg:block p-4 lg:px-0 items-center fixed lg:static lg:block top-0 right-0 left-0 bg-white z-50">
+        <i class="ri-menu-2-line lg:mt-4 text-2xl cursor-pointer animated fadeIn" onclick="openMenu()"></i>
+        <a href="https://caedmonx.github.io">
+          <img class="animated fadeInLeft avatar rounded-lg mx-4 lg:mt-32 lg:mx-0 mt-0 lg:w-24 lg:h-24 w-12 w-12" src="https://caedmonx.github.io/images/avatar.png?v=1669196159958" alt="">
+        </a>
+        <h1 class="animated fadeInLeft lg:text-4xl font-extrabold lg:mt-8 mt-0 text-xl" style="animation-delay: 0.2s">Caedmon</h1>
+      </div>
+      
+        <div class="animated fadeInLeft" style="animation-delay: 0.4s">
+          <p class="my-4 text-gray-600 font-light hidden lg:block">
+            文章目录
+          </p>
+          <div class="toc-container hidden lg:block">
+            <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#asyncawait">async/.await</a>
+<ul>
+<li><a href="#async-lifetimes">async Lifetimes</a></li>
+<li><a href="#async-move">async move</a></li>
+<li><a href="#await-on-a-multithreaded-executor">.await on a Multithreaded Executor</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      
+    </div>
+  </div>
+</div>
+
+<div class="menu-container">
+  <i class="ri-arrow-left-line text-2xl cursor-pointer animated fadeIn close-menu-btn" onclick="closeMenu()"></i>
+  <div>
+    
+      
+        <a href="/" class="menu" style="animation-delay: 0s">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu" style="animation-delay: 0.2s">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu" style="animation-delay: 0.4s">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu" style="animation-delay: 0.6000000000000001s">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="site-footer">
+    <div class="py-4 text-gray-700">Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a></div>
+    <a class="rss" href="https://caedmonx.github.io/atom.xml" target="_blank">RSS</a>
+  </div>
+</div>
+<div class="mask" onclick="closeMenu()">
+</div>
+      <div class="content-wrapper py-32 lg:p-8 lg:w-3/4 post-detail animated fadeIn">
+        <h1 class="text-3xl font-bold lg:mt-16">Rust异步书3译文</h1>
+        <div class="text-sm text-gray-700 lg:my-8">
+          2022-08-16 / 8 min read
+        </div>
+        
+        <div class="post-content yue">
+          <h2 id="asyncawait">async/.await</h2>
+<p>In <a href="https://rust-lang.github.io/async-book/01_getting_started/04_async_await_primer.html">the first chapter</a>, we took a brief look at <code>async</code>/<code>.await</code>. This chapter will discuss <code>async</code>/<code>.await</code> in greater detail, explaining how it works and how <code>async</code> code differs from traditional Rust programs.</p>
+<blockquote>
+<p>在第一章中，我们简要介绍了 async/.await。 本章将更详细地讨论 async/.await，解释它的工作原理以及异步代码与传统 Rust 程序的不同之处。</p>
+</blockquote>
+<p><code>async</code>/<code>.await</code> are special pieces of Rust syntax that make it possible to yield control of the current thread rather than blocking, allowing other code to make progress while waiting on an operation to complete.</p>
+<blockquote>
+<p>async/.await 是 Rust 语法的特殊部分，它可以让出对当前线程的控制而不是阻塞，从而允许其他代码在等待操作完成时取得进展。</p>
+</blockquote>
+<p>There are two main ways to use <code>async</code>: <code>async fn</code> and <code>async</code> blocks. Each returns a value that implements the <code>Future</code> trait:</p>
+<blockquote>
+<p>使用 async 有两种主要方式：async fn 和 async 块。 每个返回一个实现 Future 特征的值：</p>
+</blockquote>
+<pre><code class="language-rust">// `foo()` returns a type that implements `Future&lt;Output = u8&gt;`.
+// `foo().await` will result in a value of type `u8`.
+async fn foo() -&gt; u8 { 5 }
+
+fn bar() -&gt; impl Future&lt;Output = u8&gt; {
+    // This `async` block results in a type that implements
+    // `Future&lt;Output = u8&gt;`.
+    async {
+        let x: u8 = foo().await;
+        x + 5
+    }
+}
+</code></pre>
+<p>As we saw in the first chapter, <code>async</code> bodies and other futures are lazy: they do nothing until they are run. The most common way to run a <code>Future</code> is to <code>.await</code> it. When <code>.await</code> is called on a <code>Future</code>, it will attempt to run it to completion. If the <code>Future</code> is blocked, it will yield control of the current thread. When more progress can be made, the <code>Future</code> will be picked up by the executor and will resume running, allowing the <code>.await</code> to resolve.</p>
+<blockquote>
+<p>正如我们在第一章中看到的，异步主体和其他future是惰性的：它们在运行之前什么都不做。 运行 Future 最常见的方法是 .await 它。 当在 Future 上调用 .await 时，它将尝试运行它以完成。 如果 Future 被阻塞，它将让出对当前线程的控制。 当可以取得更多进展时，Future 将被 executor 拾取并恢复运行，允许 .await 解决。</p>
+</blockquote>
+<h3 id="async-lifetimes">async Lifetimes</h3>
+<p>Unlike traditional functions, <code>async fn</code>s which take references or other non-<code>'static</code> arguments return a <code>Future</code> which is bounded by the lifetime of the arguments:</p>
+<blockquote>
+<p>与传统函数不同，采用引用或其他非静态参数的异步函数返回一个受参数生命周期限制的 Future：</p>
+</blockquote>
+<pre><code class="language-rust">// This function:
+async fn foo(x: &amp;u8) -&gt; u8 { *x }
+
+// Is equivalent to this function:
+fn foo_expanded&lt;'a&gt;(x: &amp;'a u8) -&gt; impl Future&lt;Output = u8&gt; + 'a {
+    async move { *x }
+}
+</code></pre>
+<p>This means that the future returned from an <code>async fn</code> must be <code>.await</code>ed while its non-<code>'static</code> arguments are still valid. In the common case of <code>.await</code>ing the future immediately after calling the function (as in <code>foo(&amp;x).await</code>) this is not an issue. However, if storing the future or sending it over to another task or thread, this may be an issue.</p>
+<blockquote>
+<p>这意味着从异步函数返回的 future 必须是在调用 <code>.await</code>后，而它的非静态参数仍然有效。 在调用函数后立即 .await 的常见情况下（如 <code>foo(&amp;x).await</code> 中），这不是问题。 但是，如果存储未来或将其发送到另一个任务或线程，这可能是一个问题。</p>
+</blockquote>
+<p>One common workaround for turning an <code>async fn</code> with references-as-arguments into a <code>'static</code> future is to bundle the arguments with the call to the <code>async fn</code> inside an <code>async</code> block:</p>
+<blockquote>
+<p>将带有引用作为参数的异步函数转换为“静态future”的一种常见解决方法是将参数与对异步函数的调用捆绑在 async 块内：</p>
+</blockquote>
+<pre><code class="language-rust">fn bad() -&gt; impl Future&lt;Output = u8&gt; {
+    let x = 5;
+    borrow_x(&amp;x) // ERROR: `x` does not live long enough
+}
+
+fn good() -&gt; impl Future&lt;Output = u8&gt; {
+    async {
+        let x = 5;
+        borrow_x(&amp;x).await
+    }
+}
+</code></pre>
+<p>By moving the argument into the <code>async</code> block, we extend its lifetime to match that of the <code>Future</code> returned from the call to <code>good</code>.</p>
+<blockquote>
+<p>通过将参数移动到 async 块中，我们延长了它的生命周期，以匹配从调用 good 中返回的 Future 的生命周期。</p>
+</blockquote>
+<h3 id="async-move">async move</h3>
+<p><code>async</code> blocks and closures allow the <code>move</code> keyword, much like normal closures. An <code>async move</code> block will take ownership of the variables it references, allowing it to outlive the current scope, but giving up the ability to share those variables with other code:</p>
+<blockquote>
+<p>异步块和闭包允许使用 move 关键字，就像普通闭包一样。 异步移动块将拥有它引用的变量的所有权，使其能够在当前范围内存活，但放弃与其他代码共享这些变量的能力：</p>
+</blockquote>
+<pre><code class="language-rust">/// `async` block:
+///
+/// Multiple different `async` blocks can access the same local variable
+/// so long as they're executed within the variable's scope
+async fn blocks() {
+    let my_string = &quot;foo&quot;.to_string();
+
+    let future_one = async {
+        // ...
+        println!(&quot;{my_string}&quot;);
+    };
+
+    let future_two = async {
+        // ...
+        println!(&quot;{my_string}&quot;);
+    };
+
+    // Run both futures to completion, printing &quot;foo&quot; twice:
+    let ((), ()) = futures::join!(future_one, future_two);
+}
+
+/// `async move` block:
+///
+/// Only one `async move` block can access the same captured variable, since
+/// captures are moved into the `Future` generated by the `async move` block.
+/// However, this allows the `Future` to outlive the original scope of the
+/// variable:
+fn move_block() -&gt; impl Future&lt;Output = ()&gt; {
+    let my_string = &quot;foo&quot;.to_string();
+    async move {
+        // ...
+        println!(&quot;{my_string}&quot;);
+    }
+}
+</code></pre>
+<h3 id="await-on-a-multithreaded-executor">.await on a Multithreaded Executor</h3>
+<p>Note that, when using a multithreaded <code>Future</code> executor, a <code>Future</code> may move between threads, so any variables used in <code>async</code> bodies must be able to travel between threads, as any <code>.await</code> can potentially result in a switch to a new thread.</p>
+<blockquote>
+<p>请注意，当使用多线程 Future 执行器时，Future 可能会在线程之间移动，因此异步主体中使用的任何变量都必须能够在线程之间移动，因为任何 .await 都可能导致切换到新线程。</p>
+</blockquote>
+<p>This means that it is not safe to use <code>Rc</code>, <code>&amp;RefCell</code> or any other types that don't implement the <code>Send</code> trait, including references to types that don't implement the <code>Sync</code> trait.</p>
+<blockquote>
+<p>这意味着使用 Rc、&amp;RefCell 或任何其他未实现 Send 特征的类型是不安全的，包括对未实现 Sync 特征的类型的引用。</p>
+</blockquote>
+<p>(Caveat: it is possible to use these types as long as they aren't in scope during a call to <code>.await</code>.)</p>
+<blockquote>
+<p>（警告：只要在调用 .await 期间它们不在范围内，就可以使用这些类型。）</p>
+</blockquote>
+<p>Similarly, it isn't a good idea to hold a traditional non-futures-aware lock across an <code>.await</code>, as it can cause the threadpool to lock up: one task could take out a lock, <code>.await</code> and yield to the executor, allowing another task to attempt to take the lock and cause a deadlock. To avoid this, use the <code>Mutex</code> in <code>futures::lock</code> rather than the one from <code>std::sync</code>.</p>
+<blockquote>
+<p>同样，在 .await 中持有传统的<code>non-futures-aware</code>锁也不是一个好主意，因为它可能导致线程池锁定：一个任务可以取出一个锁，.await 并让步给执行程序， 允许另一个任务尝试获取锁并导致死锁。 为避免这种情况，请使用 futures::lock 中的互斥锁，而不是 std::sync 中的互斥锁。</p>
+</blockquote>
+
+        </div>
+
+        
+          <a class="animated fadeInUp p-2 items-center text-sm text-gray-700 border hover:bg-gray-300 leading-none rounded-full flex lg:inline-flex m-4 " href="https://caedmonx.github.io/tag/BjAQKjRro/">
+            <span class="flex-auto">Rust</span>
+          </a>
+        
+
+
+        <div class="flex justify-between py-8">
+          
+            <div class="prev-post">
+              <a href="https://caedmonx.github.io/post/rust-yi-bu-shu-4-yi-wen/">
+                <h3 class="post-title">
+                  <i class="ri-arrow-left-line"></i>
+                  Rust异步书4译文
+                </h3>
+              </a>
+            </div>
+          
+
+          
+            <div class="next-post">
+              <a href="https://caedmonx.github.io/post/rust-yi-bu-shu-24-yi-wen/">
+                <h3 class="post-title">
+                  Rust异步书2.4译文
+                  <i class="ri-arrow-right-line"></i>
+                </h3>
+              </a>
+            </div>
+          
+        </div>
+
+        
+          
+            <link rel="stylesheet" href="https://unpkg.com/gitalk/dist/gitalk.css">
+<script src="https://unpkg.com/gitalk/dist/gitalk.min.js"></script>
+
+<div id="gitalk-container"></div>
+
+<script>
+
+  var gitalk = new Gitalk({
+    clientID: 'c156a46b4028f9147223',
+    clientSecret: '3edfa6353ae2e8cb281297e7ffa7fa84a3e13041',
+    repo: 'caedmonx.github.io',
+    owner: 'caedmonx',
+    admin: ['caedmonx'],
+    id: (location.pathname).substring(0, 49),      // Ensure uniqueness and length less than 50
+    distractionFreeMode: false  // Facebook-like distraction free mode
+  })
+
+  gitalk.render('gitalk-container')
+
+</script>
+
+          
+
+          
+        
+
+      </div>
+    </div>
+
+    <script src="https://caedmonx.github.io/media/prism.js"></script>  
+<script>
+
+Prism.highlightAll()
+let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+// This should probably be throttled.
+// Especially because it triggers during smooth scrolling.
+// https://lodash.com/docs/4.17.10#throttle
+// You could do like...
+// window.addEventListener("scroll", () => {
+//    _.throttle(doThatStuff, 100);
+// });
+// Only not doing it here to keep this Pen dependency-free.
+
+window.addEventListener("scroll", event => {
+  let fromTop = window.scrollY;
+
+  mainNavLinks.forEach((link, index) => {
+    let section = document.getElementById(decodeURI(link.hash).substring(1));
+    let nextSection = null
+    if (mainNavLinks[index + 1]) {
+      nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+    }
+    if (section.offsetTop <= fromTop) {
+      if (nextSection) {
+        if (nextSection.offsetTop > fromTop) {
+          link.classList.add("current");
+        } else {
+          link.classList.remove("current");    
+        }
+      } else {
+        link.classList.add("current");
+      }
+    } else {
+      link.classList.remove("current");
+    }
+  });
+});
+
+
+document.addEventListener("DOMContentLoaded", function() {
+  var lazyImages = [].slice.call(document.querySelectorAll(".post-feature-image.lazy"));
+
+  if ("IntersectionObserver" in window) {
+    let lazyImageObserver = new IntersectionObserver(function(entries, observer) {
+      entries.forEach(function(entry) {
+        if (entry.isIntersecting) {
+          let lazyImage = entry.target
+          lazyImage.style.backgroundImage = `url(${lazyImage.dataset.bg})`
+          lazyImage.classList.remove("lazy")
+          lazyImageObserver.unobserve(lazyImage)
+        }
+      });
+    });
+
+    lazyImages.forEach(function(lazyImage) {
+      lazyImageObserver.observe(lazyImage)
+    })
+  } else {
+    // Possibly fall back to a more compatible method here
+  }
+});
+
+const menuContainer = document.querySelector('.menu-container')
+const menus = document.querySelectorAll('.menu-container .menu')
+const mask = document.querySelector('.mask')
+const contentWrapper = document.querySelector('.content-wrapper')
+const latestArticle = document.querySelector('.latest-article')
+const readMore = document.querySelector('.read-more')
+const indexPage = document.querySelector('.index-page')
+
+const isHome = location.pathname === '/'
+if (latestArticle) {
+  latestArticle.style.display = isHome ? 'block' : 'none'
+  readMore.style.display = isHome ? 'block' : 'none'
+  indexPage.style.display = isHome ? 'none' : 'block'
+}
+
+const openMenu = () => {
+  menuContainer.classList.add('open')
+  menus.forEach(menu => {
+    menu.classList.add('animated', 'fadeInLeft')
+  })
+  mask.classList.add('open')
+  contentWrapper.classList.add('is-second')
+}
+
+const closeMenu = () => {
+  menuContainer.classList.remove('open')
+  menus.forEach(menu => {
+    menu.classList.remove('animated', 'fadeInLeft')
+  })
+  mask.classList.remove('open')
+  contentWrapper.classList.remove('is-second')
+}
+</script>
+  
+  </body>
+</html>

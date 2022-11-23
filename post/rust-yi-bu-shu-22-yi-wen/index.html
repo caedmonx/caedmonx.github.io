@@ -1,0 +1,403 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Caedmon</title>
+<meta name="description" content="温故而知新" />
+<link rel="shortcut icon" href="https://caedmonx.github.io/favicon.ico?v=1669196159958">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.7.2/animate.min.css">
+
+<link rel="stylesheet" href="https://caedmonx.github.io/styles/main.css">
+
+
+
+  </head>
+  <body>
+    <div id="app" class="main px-4 flex flex-col lg:flex-row">
+      <div id="sidebar" class="sidebar-wrapper lg:static lg:w-1/4">
+  <div class="lg:sticky top-0">
+    <div class="sidebar-content">
+      <div class="flex lg:block p-4 lg:px-0 items-center fixed lg:static lg:block top-0 right-0 left-0 bg-white z-50">
+        <i class="ri-menu-2-line lg:mt-4 text-2xl cursor-pointer animated fadeIn" onclick="openMenu()"></i>
+        <a href="https://caedmonx.github.io">
+          <img class="animated fadeInLeft avatar rounded-lg mx-4 lg:mt-32 lg:mx-0 mt-0 lg:w-24 lg:h-24 w-12 w-12" src="https://caedmonx.github.io/images/avatar.png?v=1669196159958" alt="">
+        </a>
+        <h1 class="animated fadeInLeft lg:text-4xl font-extrabold lg:mt-8 mt-0 text-xl" style="animation-delay: 0.2s">Caedmon</h1>
+      </div>
+      
+        <div class="animated fadeInLeft" style="animation-delay: 0.4s">
+          <p class="my-4 text-gray-600 font-light hidden lg:block">
+            文章目录
+          </p>
+          <div class="toc-container hidden lg:block">
+            <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#task-wakeups-with-waker">Task Wakeups with Waker</a>
+<ul>
+<li><a href="#applied-build-a-timer">Applied: Build a Timer</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      
+    </div>
+  </div>
+</div>
+
+<div class="menu-container">
+  <i class="ri-arrow-left-line text-2xl cursor-pointer animated fadeIn close-menu-btn" onclick="closeMenu()"></i>
+  <div>
+    
+      
+        <a href="/" class="menu" style="animation-delay: 0s">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu" style="animation-delay: 0.2s">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu" style="animation-delay: 0.4s">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu" style="animation-delay: 0.6000000000000001s">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="site-footer">
+    <div class="py-4 text-gray-700">Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a></div>
+    <a class="rss" href="https://caedmonx.github.io/atom.xml" target="_blank">RSS</a>
+  </div>
+</div>
+<div class="mask" onclick="closeMenu()">
+</div>
+      <div class="content-wrapper py-32 lg:p-8 lg:w-3/4 post-detail animated fadeIn">
+        <h1 class="text-3xl font-bold lg:mt-16">Rust异步书2.2译文</h1>
+        <div class="text-sm text-gray-700 lg:my-8">
+          2022-08-16 / 7 min read
+        </div>
+        
+        <div class="post-content yue">
+          <h2 id="task-wakeups-with-waker">Task Wakeups with Waker</h2>
+<p>It's common that futures aren't able to complete the first time they are <code>poll</code>ed. When this happens, the future needs to ensure that it is polled again once it is ready to make more progress. This is done with the <code>Waker</code> type.</p>
+<blockquote>
+<p>future在第一次被 poll 时不能完成是很常见的。当这种情况发生时，future 需要确保一旦它准备好取得更多进展时能够被再次 poll。这是用 Waker 类型完成的。</p>
+</blockquote>
+<p>Each time a future is polled, it is polled as part of a &quot;task&quot;. Tasks are the top-level futures that have been submitted to an executor.</p>
+<blockquote>
+<p>future每次被poll时，它都是作为“任务”的一部分进行的。这些任务是提交给执行器的顶级future。</p>
+</blockquote>
+<p><code>Waker</code> provides a <code>wake()</code> method that can be used to tell the executor that the associated task should be awoken. When <code>wake()</code> is called, the executor knows that the task associated with the <code>Waker</code> is ready to make progress, and its future should be polled again.</p>
+<blockquote>
+<p>Waker提供了一个wake()方法，可以用来告诉执行器应该唤醒相关的任务。当wake()被调用时，执行器知道与Waker关联的任务已经准备好继续执行了，并且它的future将再次被轮询。</p>
+</blockquote>
+<p><code>Waker</code> also implements <code>clone()</code> so that it can be copied around and stored.</p>
+<blockquote>
+<p>Waker还实现了clone()，这样它就可以被复制和存储。</p>
+</blockquote>
+<p>Let's try implementing a simple timer future using <code>Waker</code>.</p>
+<blockquote>
+<p>让我们尝试使用Waker实现一个简单的timer future。</p>
+</blockquote>
+<h3 id="applied-build-a-timer">Applied: Build a Timer</h3>
+<p>For the sake of the example, we'll just spin up a new thread when the timer is created, sleep for the required time, and then signal the timer future when the time window has elapsed.</p>
+<blockquote>
+<p>出于本例的考虑，我们将在创建计时器时启动一个新线程，在所需的时间内休眠，然后在时间窗口过去时向 timer future 发出信号。</p>
+</blockquote>
+<p>First, start a new project with <code>cargo new --lib timer_future</code> and add the imports we'll need to get started to <code>src/lib.rs</code>:</p>
+<blockquote>
+<p>首先，用cargo new——lib timer_future启动一个新项目，并在src/lib.rs中添加我们需要的导入:</p>
+</blockquote>
+<pre><code class="language-rust">#![allow(unused)]
+fn main() {
+  use std::{
+      future::Future,
+      pin::Pin,
+      sync::{Arc, Mutex},
+      task::{Context, Poll, Waker},
+      thread,
+      time::Duration,
+  };
+}
+</code></pre>
+<p>Let's start by defining the future type itself. Our future needs a way for the thread to communicate that the timer has elapsed and the future should complete. We'll use a shared <code>Arc&lt;Mutex&lt;..&gt;&gt;</code> value to communicate between the thread and the future.</p>
+<blockquote>
+<p>让我们从定义future类型本身开始。我们的future需要为线程提供一种方式来传递timer已经过期并且future应该完成的信息。我们将使用一个共享的Arc&lt;Mutex&lt;..&gt;&gt;值在线程和future之间传递信息。</p>
+</blockquote>
+<pre><code class="language-rust">pub struct TimerFuture {
+    shared_state: Arc&lt;Mutex&lt;SharedState&gt;&gt;,
+}
+
+/// Shared state between the future and the waiting thread
+struct SharedState {
+    /// Whether or not the sleep time has elapsed
+    completed: bool,
+
+    /// The waker for the task that `TimerFuture` is running on.
+    /// The thread can use this after setting `completed = true` to tell
+    /// `TimerFuture`'s task to wake up, see that `completed = true`, and
+    /// move forward.
+    waker: Option&lt;Waker&gt;,
+}
+</code></pre>
+<p>Now, let's actually write the <code>Future</code> implementation!</p>
+<blockquote>
+<p>现在，让我们实际编写Future实现!</p>
+</blockquote>
+<pre><code class="language-rust">impl Future for TimerFuture {
+    type Output = ();
+    fn poll(self: Pin&lt;&amp;mut Self&gt;, cx: &amp;mut Context&lt;'_&gt;) -&gt; Poll&lt;Self::Output&gt; {
+        // Look at the shared state to see if the timer has already completed.
+        // 查看共享状态以查看 timer 是否已完成。
+        let mut shared_state = self.shared_state.lock().unwrap();
+        if shared_state.completed {
+            Poll::Ready(())
+        } else {
+            // Set waker so that the thread can wake up the current task
+            // when the timer has completed, ensuring that the future is polled
+            // again and sees that `completed = true`.
+            //
+            // It's tempting to do this once rather than repeatedly cloning
+            // the waker each time. However, the `TimerFuture` can move between
+            // tasks on the executor, which could cause a stale waker pointing
+            // to the wrong task, preventing `TimerFuture` from waking up
+            // correctly.
+            //
+            // N.B. it's possible to check for this using the `Waker::will_wake`
+            // function, but we omit that here to keep things simple.
+            // 设置waker，以便线程可以在 timer 完成时唤醒当前任务，确保未来再次轮询，
+            // 并看到 completed = true
+            // 这样做一次而不是每次重复克隆唤醒器是很诱人的。
+            // 然而，TimerFuture 可以在执行器上的任务之间移动，
+            // 这可能会导致陈旧的 waker 指向错误的任务，从而阻止 TimerFuture 正确地唤醒。
+            // 注意:可以使用' wake::will_wake '函数来检查这个，但为了简单起见我们省略了它。
+            shared_state.waker = Some(cx.waker().clone());
+            Poll::Pending
+        }
+    }
+}
+</code></pre>
+<p>Pretty simple, right? If the thread has set <code>shared_state.completed = true</code>, we're done! Otherwise, we clone the <code>Waker</code> for the current task and pass it to <code>shared_state.waker</code> so that the thread can wake the task back up.</p>
+<blockquote>
+<p>很简单，对吧？ 如果线程设置了 shared_state.completed = true，我们就完成了！ 否则，我们为当前任务克隆 Waker 并将其传递给 shared_state.waker 以便线程可以唤醒任务备份。</p>
+</blockquote>
+<p>Importantly, we have to update the <code>Waker</code> every time the future is polled because the future may have moved to a different task with a different <code>Waker</code>. This will happen when futures are passed around between tasks after being polled.</p>
+<blockquote>
+<p>重要的是，我们必须在每次轮询future时更新 Waker，因为未来可能已经使用不同的 Waker 转移到不同的任务。 当future 在被轮询后在任务之间传递时，就会发生这种情况。</p>
+</blockquote>
+<p>Finally, we need the API to actually construct the timer and start the thread:</p>
+<blockquote>
+<p>最后，我们需要 API 来实际构造计时器并启动线程：</p>
+</blockquote>
+<pre><code class="language-rust">impl TimerFuture {
+    /// Create a new `TimerFuture` which will complete after the provided
+    /// timeout.
+    pub fn new(duration: Duration) -&gt; Self {
+        let shared_state = Arc::new(Mutex::new(SharedState {
+            completed: false,
+            waker: None,
+        }));
+
+        // Spawn the new thread
+        let thread_shared_state = shared_state.clone();
+        thread::spawn(move || {
+            thread::sleep(duration);
+            let mut shared_state = thread_shared_state.lock().unwrap();
+            // Signal that the timer has completed and wake up the last
+            // task on which the future was polled, if one exists.
+            shared_state.completed = true;
+            if let Some(waker) = shared_state.waker.take() {
+                waker.wake()
+            }
+        });
+
+        TimerFuture { shared_state }
+    }
+}
+</code></pre>
+<p>Woot! That's all we need to build a simple timer future. Now, if only we had an executor to run the future on...</p>
+<blockquote>
+<p>哇！ 这就是我们构建一个简单的计时器future所需的全部内容。 现在，如果我们有一个执行者来运行未来......</p>
+</blockquote>
+
+        </div>
+
+        
+          <a class="animated fadeInUp p-2 items-center text-sm text-gray-700 border hover:bg-gray-300 leading-none rounded-full flex lg:inline-flex m-4 " href="https://caedmonx.github.io/tag/BjAQKjRro/">
+            <span class="flex-auto">Rust</span>
+          </a>
+        
+
+
+        <div class="flex justify-between py-8">
+          
+            <div class="prev-post">
+              <a href="https://caedmonx.github.io/post/rust-yi-bu-shu-23-yi-wen/">
+                <h3 class="post-title">
+                  <i class="ri-arrow-left-line"></i>
+                  Rust异步书2.3译文
+                </h3>
+              </a>
+            </div>
+          
+
+          
+            <div class="next-post">
+              <a href="https://caedmonx.github.io/post/rust-yi-bu-shu-21-yi-wen/">
+                <h3 class="post-title">
+                  Rust异步书2.1译文
+                  <i class="ri-arrow-right-line"></i>
+                </h3>
+              </a>
+            </div>
+          
+        </div>
+
+        
+          
+            <link rel="stylesheet" href="https://unpkg.com/gitalk/dist/gitalk.css">
+<script src="https://unpkg.com/gitalk/dist/gitalk.min.js"></script>
+
+<div id="gitalk-container"></div>
+
+<script>
+
+  var gitalk = new Gitalk({
+    clientID: 'c156a46b4028f9147223',
+    clientSecret: '3edfa6353ae2e8cb281297e7ffa7fa84a3e13041',
+    repo: 'caedmonx.github.io',
+    owner: 'caedmonx',
+    admin: ['caedmonx'],
+    id: (location.pathname).substring(0, 49),      // Ensure uniqueness and length less than 50
+    distractionFreeMode: false  // Facebook-like distraction free mode
+  })
+
+  gitalk.render('gitalk-container')
+
+</script>
+
+          
+
+          
+        
+
+      </div>
+    </div>
+
+    <script src="https://caedmonx.github.io/media/prism.js"></script>  
+<script>
+
+Prism.highlightAll()
+let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+// This should probably be throttled.
+// Especially because it triggers during smooth scrolling.
+// https://lodash.com/docs/4.17.10#throttle
+// You could do like...
+// window.addEventListener("scroll", () => {
+//    _.throttle(doThatStuff, 100);
+// });
+// Only not doing it here to keep this Pen dependency-free.
+
+window.addEventListener("scroll", event => {
+  let fromTop = window.scrollY;
+
+  mainNavLinks.forEach((link, index) => {
+    let section = document.getElementById(decodeURI(link.hash).substring(1));
+    let nextSection = null
+    if (mainNavLinks[index + 1]) {
+      nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+    }
+    if (section.offsetTop <= fromTop) {
+      if (nextSection) {
+        if (nextSection.offsetTop > fromTop) {
+          link.classList.add("current");
+        } else {
+          link.classList.remove("current");    
+        }
+      } else {
+        link.classList.add("current");
+      }
+    } else {
+      link.classList.remove("current");
+    }
+  });
+});
+
+
+document.addEventListener("DOMContentLoaded", function() {
+  var lazyImages = [].slice.call(document.querySelectorAll(".post-feature-image.lazy"));
+
+  if ("IntersectionObserver" in window) {
+    let lazyImageObserver = new IntersectionObserver(function(entries, observer) {
+      entries.forEach(function(entry) {
+        if (entry.isIntersecting) {
+          let lazyImage = entry.target
+          lazyImage.style.backgroundImage = `url(${lazyImage.dataset.bg})`
+          lazyImage.classList.remove("lazy")
+          lazyImageObserver.unobserve(lazyImage)
+        }
+      });
+    });
+
+    lazyImages.forEach(function(lazyImage) {
+      lazyImageObserver.observe(lazyImage)
+    })
+  } else {
+    // Possibly fall back to a more compatible method here
+  }
+});
+
+const menuContainer = document.querySelector('.menu-container')
+const menus = document.querySelectorAll('.menu-container .menu')
+const mask = document.querySelector('.mask')
+const contentWrapper = document.querySelector('.content-wrapper')
+const latestArticle = document.querySelector('.latest-article')
+const readMore = document.querySelector('.read-more')
+const indexPage = document.querySelector('.index-page')
+
+const isHome = location.pathname === '/'
+if (latestArticle) {
+  latestArticle.style.display = isHome ? 'block' : 'none'
+  readMore.style.display = isHome ? 'block' : 'none'
+  indexPage.style.display = isHome ? 'none' : 'block'
+}
+
+const openMenu = () => {
+  menuContainer.classList.add('open')
+  menus.forEach(menu => {
+    menu.classList.add('animated', 'fadeInLeft')
+  })
+  mask.classList.add('open')
+  contentWrapper.classList.add('is-second')
+}
+
+const closeMenu = () => {
+  menuContainer.classList.remove('open')
+  menus.forEach(menu => {
+    menu.classList.remove('animated', 'fadeInLeft')
+  })
+  mask.classList.remove('open')
+  contentWrapper.classList.remove('is-second')
+}
+</script>
+  
+  </body>
+</html>

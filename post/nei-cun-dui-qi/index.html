@@ -1,0 +1,288 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Caedmon</title>
+<meta name="description" content="温故而知新" />
+<link rel="shortcut icon" href="https://caedmonx.github.io/favicon.ico?v=1669196159958">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.7.2/animate.min.css">
+
+<link rel="stylesheet" href="https://caedmonx.github.io/styles/main.css">
+
+
+
+  </head>
+  <body>
+    <div id="app" class="main px-4 flex flex-col lg:flex-row">
+      <div id="sidebar" class="sidebar-wrapper lg:static lg:w-1/4">
+  <div class="lg:sticky top-0">
+    <div class="sidebar-content">
+      <div class="flex lg:block p-4 lg:px-0 items-center fixed lg:static lg:block top-0 right-0 left-0 bg-white z-50">
+        <i class="ri-menu-2-line lg:mt-4 text-2xl cursor-pointer animated fadeIn" onclick="openMenu()"></i>
+        <a href="https://caedmonx.github.io">
+          <img class="animated fadeInLeft avatar rounded-lg mx-4 lg:mt-32 lg:mx-0 mt-0 lg:w-24 lg:h-24 w-12 w-12" src="https://caedmonx.github.io/images/avatar.png?v=1669196159958" alt="">
+        </a>
+        <h1 class="animated fadeInLeft lg:text-4xl font-extrabold lg:mt-8 mt-0 text-xl" style="animation-delay: 0.2s">Caedmon</h1>
+      </div>
+      
+        <div class="animated fadeInLeft" style="animation-delay: 0.4s">
+          <p class="my-4 text-gray-600 font-light hidden lg:block">
+            文章目录
+          </p>
+          <div class="toc-container hidden lg:block">
+            <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E9%9C%80%E8%A6%81%E5%86%85%E5%AD%98%E5%AF%B9%E9%BD%90">为什么需要内存对齐？</a>
+<ul>
+<li><a href="#%E4%B8%BE%E4%BE%8B%E8%AF%B4%E6%98%8E1">举例说明1</a></li>
+<li><a href="#%E4%B8%BE%E4%BE%8B%E8%AF%B4%E6%98%8E2">举例说明2</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      
+    </div>
+  </div>
+</div>
+
+<div class="menu-container">
+  <i class="ri-arrow-left-line text-2xl cursor-pointer animated fadeIn close-menu-btn" onclick="closeMenu()"></i>
+  <div>
+    
+      
+        <a href="/" class="menu" style="animation-delay: 0s">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu" style="animation-delay: 0.2s">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu" style="animation-delay: 0.4s">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu" style="animation-delay: 0.6000000000000001s">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="site-footer">
+    <div class="py-4 text-gray-700">Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a></div>
+    <a class="rss" href="https://caedmonx.github.io/atom.xml" target="_blank">RSS</a>
+  </div>
+</div>
+<div class="mask" onclick="closeMenu()">
+</div>
+      <div class="content-wrapper py-32 lg:p-8 lg:w-3/4 post-detail animated fadeIn">
+        <h1 class="text-3xl font-bold lg:mt-16">内存对齐</h1>
+        <div class="text-sm text-gray-700 lg:my-8">
+          2022-08-17 / 3 min read
+        </div>
+        
+        <div class="post-content yue">
+          <h2 id="为什么需要内存对齐">为什么需要内存对齐？</h2>
+<p>CPU 一次能读取多少内存要看数据总线是多少位，如果是16位，则一次只能读取2个字节，如果是32位，则可以读取4个字节，并且 CPU 不能跨内存区间访问。</p>
+<p>什么是跨内存区间访问？</p>
+<p>CPU 每次从内存中读取数据时，其读取的内存的起始地址并不是可以从随意的一个地址开始的，这个起始地址的偏移量要求必须是2的整数倍。</p>
+<h3 id="举例说明1">举例说明1</h3>
+<p>你以为的 CPU 能在内存中能找到的定位：012345678</p>
+<p>实际上 CPU 能在内存中找到的定位：        0       4      8      12</p>
+<p>不进行内存对齐：<code>xyyyyzz    // element_Y = yyyy, need 4byte, 需要2次io</code></p>
+<p>进行内存对齐： <code>x   yyyyzz  //内存对齐后，element_Y只需要1次io</code></p>
+<p>为什么cpu不能找到内存中123 567这些位置？</p>
+<p>要搞清楚这个问题需要从cpu和DRAM的硬件结构入手。可参考博客：</p>
+<p><a href="https://blog.csdn.net/cc_net/article/details/11097267">计算机原理学习（3）-- 内存工作原理</a> 参考其中“1.1 DRAM芯片结构”，我认为从内存的硬件角度给出了合理的解释。关键词：“二维矩阵”，“地址线中的低2位A0，A1”。</p>
+<h3 id="举例说明2">举例说明2</h3>
+<p>假设有这样一个结构体如下：</p>
+<pre><code class="language-c">struct foo {
+  char a;
+  int b;
+}
+// 如果在32位系统下，这个结构体应该是8个字节的
+</code></pre>
+<p>假设地址空间是类似下面这样的：</p>
+<figure data-type="image" tabindex="1"><img src="https://images-caedmon.oss-cn-chengdu.aliyuncs.com/uPic/2022-04/1649000706-1648285114375-v2-a1a6b68b674c38eebb34cb19c00e8954_1440w.jpeg" alt="1648285114375-v2-a1a6b68b674c38eebb34cb19c00e8954_1440w" loading="lazy"></figure>
+<p>在没有字节对齐的情况下，变量 a 就是占用了 0x00000001 这一个字节，而变量b则是占用了 0x00000002 ~ 0x00000005 这四个字节，那么 CPU 如果想从内存中读取变量b，首先要从变量b的开始地址 0x00000002 读到 0x00000004，然后再读取一次 0x00000005 这个字节，相当于读取一个 int，CPU 从内存读取了两次。</p>
+<p>而如果进行字节对齐的话，变量a还是占用了 0x00000001 这个字节，而变量b则是占用了 0x00000005 ~ 0x00000008 这四个字节，那么 CPU 要读取变量b的话，就直接一次性从 0x00000005 读到 0x00000008，就一次全部读取出来了。</p>
+<p>所以说，字节对齐的根本原因其实在于 CPU 读取内存的效率问题，对齐以后，CPU 读取内存的效率会更快。但是这里有个问题，就是对齐的时候 0x00000002 ~ 0x00000004 这三个字节是浪费的，所以字节对齐实际上也有那么点以空间换时间的意思。</p>
+
+        </div>
+
+        
+          <a class="animated fadeInUp p-2 items-center text-sm text-gray-700 border hover:bg-gray-300 leading-none rounded-full flex lg:inline-flex m-4 " href="https://caedmonx.github.io/tag/8JxclTgIZ/">
+            <span class="flex-auto">操作系统</span>
+          </a>
+        
+
+
+        <div class="flex justify-between py-8">
+          
+            <div class="prev-post">
+              <a href="https://caedmonx.github.io/post/uml-zhong-lei-zhi-jian-de-yi-lai-guan-lian-ju-he-zu-he-fan-hua/">
+                <h3 class="post-title">
+                  <i class="ri-arrow-left-line"></i>
+                  UML中类之间的依赖、关联、聚合、组合、泛化
+                </h3>
+              </a>
+            </div>
+          
+
+          
+            <div class="next-post">
+              <a href="https://caedmonx.github.io/post/cao-zuo-xi-tong-gai-nian-zhong-duan/">
+                <h3 class="post-title">
+                  操作系统概念-中断
+                  <i class="ri-arrow-right-line"></i>
+                </h3>
+              </a>
+            </div>
+          
+        </div>
+
+        
+          
+            <link rel="stylesheet" href="https://unpkg.com/gitalk/dist/gitalk.css">
+<script src="https://unpkg.com/gitalk/dist/gitalk.min.js"></script>
+
+<div id="gitalk-container"></div>
+
+<script>
+
+  var gitalk = new Gitalk({
+    clientID: 'c156a46b4028f9147223',
+    clientSecret: '3edfa6353ae2e8cb281297e7ffa7fa84a3e13041',
+    repo: 'caedmonx.github.io',
+    owner: 'caedmonx',
+    admin: ['caedmonx'],
+    id: (location.pathname).substring(0, 49),      // Ensure uniqueness and length less than 50
+    distractionFreeMode: false  // Facebook-like distraction free mode
+  })
+
+  gitalk.render('gitalk-container')
+
+</script>
+
+          
+
+          
+        
+
+      </div>
+    </div>
+
+    <script src="https://caedmonx.github.io/media/prism.js"></script>  
+<script>
+
+Prism.highlightAll()
+let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+// This should probably be throttled.
+// Especially because it triggers during smooth scrolling.
+// https://lodash.com/docs/4.17.10#throttle
+// You could do like...
+// window.addEventListener("scroll", () => {
+//    _.throttle(doThatStuff, 100);
+// });
+// Only not doing it here to keep this Pen dependency-free.
+
+window.addEventListener("scroll", event => {
+  let fromTop = window.scrollY;
+
+  mainNavLinks.forEach((link, index) => {
+    let section = document.getElementById(decodeURI(link.hash).substring(1));
+    let nextSection = null
+    if (mainNavLinks[index + 1]) {
+      nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+    }
+    if (section.offsetTop <= fromTop) {
+      if (nextSection) {
+        if (nextSection.offsetTop > fromTop) {
+          link.classList.add("current");
+        } else {
+          link.classList.remove("current");    
+        }
+      } else {
+        link.classList.add("current");
+      }
+    } else {
+      link.classList.remove("current");
+    }
+  });
+});
+
+
+document.addEventListener("DOMContentLoaded", function() {
+  var lazyImages = [].slice.call(document.querySelectorAll(".post-feature-image.lazy"));
+
+  if ("IntersectionObserver" in window) {
+    let lazyImageObserver = new IntersectionObserver(function(entries, observer) {
+      entries.forEach(function(entry) {
+        if (entry.isIntersecting) {
+          let lazyImage = entry.target
+          lazyImage.style.backgroundImage = `url(${lazyImage.dataset.bg})`
+          lazyImage.classList.remove("lazy")
+          lazyImageObserver.unobserve(lazyImage)
+        }
+      });
+    });
+
+    lazyImages.forEach(function(lazyImage) {
+      lazyImageObserver.observe(lazyImage)
+    })
+  } else {
+    // Possibly fall back to a more compatible method here
+  }
+});
+
+const menuContainer = document.querySelector('.menu-container')
+const menus = document.querySelectorAll('.menu-container .menu')
+const mask = document.querySelector('.mask')
+const contentWrapper = document.querySelector('.content-wrapper')
+const latestArticle = document.querySelector('.latest-article')
+const readMore = document.querySelector('.read-more')
+const indexPage = document.querySelector('.index-page')
+
+const isHome = location.pathname === '/'
+if (latestArticle) {
+  latestArticle.style.display = isHome ? 'block' : 'none'
+  readMore.style.display = isHome ? 'block' : 'none'
+  indexPage.style.display = isHome ? 'none' : 'block'
+}
+
+const openMenu = () => {
+  menuContainer.classList.add('open')
+  menus.forEach(menu => {
+    menu.classList.add('animated', 'fadeInLeft')
+  })
+  mask.classList.add('open')
+  contentWrapper.classList.add('is-second')
+}
+
+const closeMenu = () => {
+  menuContainer.classList.remove('open')
+  menus.forEach(menu => {
+    menu.classList.remove('animated', 'fadeInLeft')
+  })
+  mask.classList.remove('open')
+  contentWrapper.classList.remove('is-second')
+}
+</script>
+  
+  </body>
+</html>

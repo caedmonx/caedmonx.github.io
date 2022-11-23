@@ -1,0 +1,422 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Caedmon</title>
+<meta name="description" content="温故而知新" />
+<link rel="shortcut icon" href="https://caedmonx.github.io/favicon.ico?v=1669196159958">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.7.2/animate.min.css">
+
+<link rel="stylesheet" href="https://caedmonx.github.io/styles/main.css">
+
+
+
+  </head>
+  <body>
+    <div id="app" class="main px-4 flex flex-col lg:flex-row">
+      <div id="sidebar" class="sidebar-wrapper lg:static lg:w-1/4">
+  <div class="lg:sticky top-0">
+    <div class="sidebar-content">
+      <div class="flex lg:block p-4 lg:px-0 items-center fixed lg:static lg:block top-0 right-0 left-0 bg-white z-50">
+        <i class="ri-menu-2-line lg:mt-4 text-2xl cursor-pointer animated fadeIn" onclick="openMenu()"></i>
+        <a href="https://caedmonx.github.io">
+          <img class="animated fadeInLeft avatar rounded-lg mx-4 lg:mt-32 lg:mx-0 mt-0 lg:w-24 lg:h-24 w-12 w-12" src="https://caedmonx.github.io/images/avatar.png?v=1669196159958" alt="">
+        </a>
+        <h1 class="animated fadeInLeft lg:text-4xl font-extrabold lg:mt-8 mt-0 text-xl" style="animation-delay: 0.2s">Caedmon</h1>
+      </div>
+      
+        <div class="animated fadeInLeft" style="animation-delay: 0.4s">
+          <p class="my-4 text-gray-600 font-light hidden lg:block">
+            文章目录
+          </p>
+          <div class="toc-container hidden lg:block">
+            <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#the-future-trait">The Future Trait</a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      
+    </div>
+  </div>
+</div>
+
+<div class="menu-container">
+  <i class="ri-arrow-left-line text-2xl cursor-pointer animated fadeIn close-menu-btn" onclick="closeMenu()"></i>
+  <div>
+    
+      
+        <a href="/" class="menu" style="animation-delay: 0s">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu" style="animation-delay: 0.2s">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu" style="animation-delay: 0.4s">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu" style="animation-delay: 0.6000000000000001s">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="site-footer">
+    <div class="py-4 text-gray-700">Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a></div>
+    <a class="rss" href="https://caedmonx.github.io/atom.xml" target="_blank">RSS</a>
+  </div>
+</div>
+<div class="mask" onclick="closeMenu()">
+</div>
+      <div class="content-wrapper py-32 lg:p-8 lg:w-3/4 post-detail animated fadeIn">
+        <h1 class="text-3xl font-bold lg:mt-16">Rust异步书2.1译文</h1>
+        <div class="text-sm text-gray-700 lg:my-8">
+          2022-08-16 / 11 min read
+        </div>
+        
+        <div class="post-content yue">
+          <h2 id="the-future-trait">The Future Trait</h2>
+<p>The <code>Future</code> trait is at the center of asynchronous programming in Rust. A <code>Future</code> is an asynchronous computation that can produce a value (although that value may be empty, e.g. <code>()</code>). A <em>simplified</em> version of the future trait might look something like this:</p>
+<blockquote>
+<p>Future 特性是Rust中异步编程的核心。Future 是一个异步计算，它可以产生一个值(尽管这个值可能是空的，例如())。Future 特征的简化版本可能是这样的:</p>
+</blockquote>
+<pre><code class="language-rust">#![allow(unused)]
+fn main() {
+  trait SimpleFuture {
+      type Output;
+      fn poll(&amp;mut self, wake: fn()) -&gt; Poll&lt;Self::Output&gt;;
+  }
+
+  enum Poll&lt;T&gt; {
+      Ready(T),
+      Pending,
+  }
+}
+</code></pre>
+<p>Futures can be advanced by calling the <code>poll</code> function, which will drive the future as far towards completion as possible. If the future completes, it returns <code>Poll::Ready(result)</code>. If the future is not able to complete yet, it returns <code>Poll::Pending</code> and arranges for the <code>wake()</code> function to be called when the <code>Future</code> is ready to make more progress. When <code>wake()</code> is called, the executor driving the <code>Future</code> will call <code>poll</code> again so that the <code>Future</code> can make more progress.</p>
+<blockquote>
+<p>可以通过调用poll函数来推进 Future，该函数将驱动 Future 尽可能地接近完成。如果future完成，它将返回Poll::Ready(result)。如果future还不能完成，它将返回Poll::Pending，并在future准备好进行更多操作时调用wake()函数。当wake()被调用时，驱动Future的执行器将再次调用poll，以便Future能够取得更多进展。</p>
+</blockquote>
+<p>Without <code>wake()</code>, the executor would have no way of knowing when a particular future could make progress, and would have to be constantly polling every future. With <code>wake()</code>, the executor knows exactly which futures are ready to be <code>poll</code>ed.</p>
+<blockquote>
+<p>如果没有wake()，执行器将无法知道某个特定的future何时能够取得进展，因此如果没有 wake()，则不得不不断地轮询每个future。使用wake()，executor 可以确切地知道哪些future准备被轮询。</p>
+</blockquote>
+<p>For example, consider the case where we want to read from a socket that may or may not have data available already. If there is data, we can read it in and return <code>Poll::Ready(data)</code>, but if no data is ready, our future is blocked and can no longer make progress. When no data is available, we must register <code>wake</code> to be called when data becomes ready on the socket, which will tell the executor that our future is ready to make progress. A simple <code>SocketRead</code> future might look something like this:</p>
+<blockquote>
+<p>例如，考虑这样一种情况，我们想要从一个套接字中读取数据，这个套接字可能已经有数据，也可能没有。如果有数据，我们可以将其读入并返回Poll::Ready(data)，但是如果没有数据准备好，我们的future将被阻塞，并且不能继续取得进展。当没有可用数据时，我们必须注册一个wake，以便在套接字上的数据准备就绪时调用它，这将告诉执行器，我们的future已经准备好继续执行了。一个简单的SocketRead的future可能看起来像这样:</p>
+</blockquote>
+<pre><code class="language-rust">pub struct SocketRead&lt;'a&gt; {
+    socket: &amp;'a Socket,
+}
+
+impl SimpleFuture for SocketRead&lt;'_&gt; {
+    type Output = Vec&lt;u8&gt;;
+
+    fn poll(&amp;mut self, wake: fn()) -&gt; Poll&lt;Self::Output&gt; {
+        if self.socket.has_data_to_read() {
+            // The socket has data -- read it into a buffer and return it.
+            Poll::Ready(self.socket.read_buf())
+        } else {
+            // The socket does not yet have data.
+            //
+            // Arrange for `wake` to be called once data is available.
+            // When data becomes available, `wake` will be called, and the
+            // user of this `Future` will know to call `poll` again and
+            // receive data.
+            self.socket.set_readable_callback(wake);
+            Poll::Pending
+        }
+    }
+}
+</code></pre>
+<p>This model of <code>Future</code>s allows for composing together multiple asynchronous operations without needing intermediate allocations. Running multiple futures at once or chaining futures together can be implemented via allocation-free state machines, like this:</p>
+<blockquote>
+<p>这种Futures模型允许将多个异步操作组合在一起，而不需要中间分配。同时运行多个future或将future链接在一起可以通过无分配状态机来实现，如下所示:</p>
+</blockquote>
+<pre><code class="language-rust">/// A SimpleFuture that runs two other futures to completion concurrently.
+///
+/// Concurrency is achieved via the fact that calls to `poll` each future
+/// may be interleaved, allowing each future to advance itself at its own pace.
+/// 并发是通过这样一个事实来实现的:对每个future的“poll”调用可能是交错的，
+/// 允许每个future以自己的速度前进。
+pub struct Join&lt;FutureA, FutureB&gt; {
+    // Each field may contain a future that should be run to completion.
+    // If the future has already completed, the field is set to `None`.
+    // This prevents us from polling a future after it has completed, which
+    // would violate the contract of the `Future` trait.
+    // 每个字段都可能包含一个应该运行到完成的future。
+    // 如果future已经完成，该字段将被设置为“None”。
+    // 这阻止了我们在future完成后进行轮询，这将违反“future”特性的约定。
+    a: Option&lt;FutureA&gt;,
+    b: Option&lt;FutureB&gt;,
+}
+
+impl&lt;FutureA, FutureB&gt; SimpleFuture for Join&lt;FutureA, FutureB&gt;
+where
+    FutureA: SimpleFuture&lt;Output = ()&gt;,
+    FutureB: SimpleFuture&lt;Output = ()&gt;,
+{
+    type Output = ();
+    fn poll(&amp;mut self, wake: fn()) -&gt; Poll&lt;Self::Output&gt; {
+        // Attempt to complete future `a`.
+        if let Some(a) = &amp;mut self.a {
+            if let Poll::Ready(()) = a.poll(wake) {
+                self.a.take();
+            }
+        }
+
+        // Attempt to complete future `b`.
+        if let Some(b) = &amp;mut self.b {
+            if let Poll::Ready(()) = b.poll(wake) {
+                self.b.take();
+            }
+        }
+
+        if self.a.is_none() &amp;&amp; self.b.is_none() {
+            // Both futures have completed -- we can return successfully
+            Poll::Ready(())
+        } else {
+            // One or both futures returned `Poll::Pending` and still have
+            // work to do. They will call `wake()` when progress can be made.
+            Poll::Pending
+        }
+    }
+}
+</code></pre>
+<p>This shows how multiple futures can be run simultaneously without needing separate allocations, allowing for more efficient asynchronous programs. Similarly, multiple sequential futures can be run one after another, like this:</p>
+<blockquote>
+<p>这展示了如何在不需要单独分配的情况下同时运行多个future，从而允许更高效的异步程序。类似地，多个序列future可以一个接一个地运行，如下所示:</p>
+</blockquote>
+<pre><code class="language-rust">/// A SimpleFuture that runs two futures to completion, one after another.
+//
+// Note: for the purposes of this simple example, `AndThenFut` assumes both
+// the first and second futures are available at creation-time. The real
+// `AndThen` combinator allows creating the second future based on the output
+// of the first future, like `get_breakfast.and_then(|food| eat(food))`.
+// 注意:在这个简单的例子中，‘AndThenFut’假设第一个和第二个futures在创建时都可用。
+// 真正的“AndThen”组合器允许基于第一个future的输出创建第二个future，
+// 比如 `get_breakfast.and_then(|food| eat(food))`。
+pub struct AndThenFut&lt;FutureA, FutureB&gt; {
+    first: Option&lt;FutureA&gt;,
+    second: FutureB,
+}
+
+impl&lt;FutureA, FutureB&gt; SimpleFuture for AndThenFut&lt;FutureA, FutureB&gt;
+where
+    FutureA: SimpleFuture&lt;Output = ()&gt;,
+    FutureB: SimpleFuture&lt;Output = ()&gt;,
+{
+    type Output = ();
+    fn poll(&amp;mut self, wake: fn()) -&gt; Poll&lt;Self::Output&gt; {
+        if let Some(first) = &amp;mut self.first {
+            match first.poll(wake) {
+                // We've completed the first future -- remove it and start on
+                // the second!
+                Poll::Ready(()) =&gt; self.first.take(),
+                // We couldn't yet complete the first future.
+                Poll::Pending =&gt; return Poll::Pending,
+            };
+        }
+        // Now that the first future is done, attempt to complete the second.
+        self.second.poll(wake)
+    }
+}
+</code></pre>
+<p>These examples show how the <code>Future</code> trait can be used to express asynchronous control flow without requiring multiple allocated objects and deeply nested callbacks. With the basic control-flow out of the way, let's talk about the real <code>Future</code> trait and how it is different.</p>
+<blockquote>
+<p>这些例子展示了如何使用Future trait来表达异步控制流，而不需要多个分配的对象和深度嵌套的回调。在介绍了基本的控制流之后，让我们来谈谈真实的Future特性及其不同之处。</p>
+</blockquote>
+<pre><code class="language-rust">trait Future {
+    type Output;
+    fn poll(
+        // Note the change from `&amp;mut self` to `Pin&lt;&amp;mut Self&gt;`:
+        self: Pin&lt;&amp;mut Self&gt;,
+        // and the change from `wake: fn()` to `cx: &amp;mut Context&lt;'_&gt;`:
+        cx: &amp;mut Context&lt;'_&gt;,
+    ) -&gt; Poll&lt;Self::Output&gt;;
+}
+</code></pre>
+<p>The first change you'll notice is that our <code>self</code> type is no longer <code>&amp;mut Self</code>, but has changed to <code>Pin&lt;&amp;mut Self&gt;</code>. We'll talk more about pinning in <a href="https://rust-lang.github.io/async-book/04_pinning/01_chapter.html">a later section</a>, but for now know that it allows us to create futures that are immovable. Immovable objects can store pointers between their fields, e.g. <code>struct MyFut { a: i32, ptr_to_a: *const i32 }</code>. Pinning is necessary to enable async/await.</p>
+<blockquote>
+<p>你会注意到的第一个变化是，我们的self类型不再是&amp;mut self，而是改为Pin&lt;&amp;mut self &gt;。我们将在后面的章节中更多地讨论“Pin”，但现在我们知道它允许我们创造不可改变的future。不可移动对象可以在它们的字段之间存储指针，例如struct MyFut {a: i32, ptr_to_a: *const i32}。要启用async/await，必须进行Pinning操作。</p>
+</blockquote>
+<p>Secondly, <code>wake: fn()</code> has changed to <code>&amp;mut Context&lt;'_&gt;</code>. In <code>SimpleFuture</code>, we used a call to a function pointer (<code>fn()</code>) to tell the future executor that the future in question should be polled. However, since <code>fn()</code> is just a function pointer, it can't store any data about <em>which</em> <code>Future</code> called <code>wake</code>.</p>
+<blockquote>
+<p>其次，wake: fn()已更改为&amp;mut Context&lt;'_&gt;。在SimpleFuture中，我们使用了对函数指针(fn())的调用来告诉future执行器应该轮询该future。然而，由于fn()只是一个函数指针，它不能存储Future调用wake的任何数据。</p>
+</blockquote>
+<p>In a real-world scenario, a complex application like a web server may have thousands of different connections whose wakeups should all be managed separately. The <code>Context</code> type solves this by providing access to a value of type <code>Waker</code>, which can be used to wake up a specific task.</p>
+<blockquote>
+<p>在现实世界中，一个复杂的应用程序，如web服务器，可能有成千上万个不同的连接，它们的唤醒都应该单独管理。Context类型通过提供对Waker类型值的访问解决了这个问题，Waker类型的值可用于唤醒特定的任务。</p>
+</blockquote>
+
+        </div>
+
+        
+          <a class="animated fadeInUp p-2 items-center text-sm text-gray-700 border hover:bg-gray-300 leading-none rounded-full flex lg:inline-flex m-4 " href="https://caedmonx.github.io/tag/BjAQKjRro/">
+            <span class="flex-auto">Rust</span>
+          </a>
+        
+
+
+        <div class="flex justify-between py-8">
+          
+            <div class="prev-post">
+              <a href="https://caedmonx.github.io/post/rust-yi-bu-shu-22-yi-wen/">
+                <h3 class="post-title">
+                  <i class="ri-arrow-left-line"></i>
+                  Rust异步书2.2译文
+                </h3>
+              </a>
+            </div>
+          
+
+          
+        </div>
+
+        
+          
+            <link rel="stylesheet" href="https://unpkg.com/gitalk/dist/gitalk.css">
+<script src="https://unpkg.com/gitalk/dist/gitalk.min.js"></script>
+
+<div id="gitalk-container"></div>
+
+<script>
+
+  var gitalk = new Gitalk({
+    clientID: 'c156a46b4028f9147223',
+    clientSecret: '3edfa6353ae2e8cb281297e7ffa7fa84a3e13041',
+    repo: 'caedmonx.github.io',
+    owner: 'caedmonx',
+    admin: ['caedmonx'],
+    id: (location.pathname).substring(0, 49),      // Ensure uniqueness and length less than 50
+    distractionFreeMode: false  // Facebook-like distraction free mode
+  })
+
+  gitalk.render('gitalk-container')
+
+</script>
+
+          
+
+          
+        
+
+      </div>
+    </div>
+
+    <script src="https://caedmonx.github.io/media/prism.js"></script>  
+<script>
+
+Prism.highlightAll()
+let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+// This should probably be throttled.
+// Especially because it triggers during smooth scrolling.
+// https://lodash.com/docs/4.17.10#throttle
+// You could do like...
+// window.addEventListener("scroll", () => {
+//    _.throttle(doThatStuff, 100);
+// });
+// Only not doing it here to keep this Pen dependency-free.
+
+window.addEventListener("scroll", event => {
+  let fromTop = window.scrollY;
+
+  mainNavLinks.forEach((link, index) => {
+    let section = document.getElementById(decodeURI(link.hash).substring(1));
+    let nextSection = null
+    if (mainNavLinks[index + 1]) {
+      nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+    }
+    if (section.offsetTop <= fromTop) {
+      if (nextSection) {
+        if (nextSection.offsetTop > fromTop) {
+          link.classList.add("current");
+        } else {
+          link.classList.remove("current");    
+        }
+      } else {
+        link.classList.add("current");
+      }
+    } else {
+      link.classList.remove("current");
+    }
+  });
+});
+
+
+document.addEventListener("DOMContentLoaded", function() {
+  var lazyImages = [].slice.call(document.querySelectorAll(".post-feature-image.lazy"));
+
+  if ("IntersectionObserver" in window) {
+    let lazyImageObserver = new IntersectionObserver(function(entries, observer) {
+      entries.forEach(function(entry) {
+        if (entry.isIntersecting) {
+          let lazyImage = entry.target
+          lazyImage.style.backgroundImage = `url(${lazyImage.dataset.bg})`
+          lazyImage.classList.remove("lazy")
+          lazyImageObserver.unobserve(lazyImage)
+        }
+      });
+    });
+
+    lazyImages.forEach(function(lazyImage) {
+      lazyImageObserver.observe(lazyImage)
+    })
+  } else {
+    // Possibly fall back to a more compatible method here
+  }
+});
+
+const menuContainer = document.querySelector('.menu-container')
+const menus = document.querySelectorAll('.menu-container .menu')
+const mask = document.querySelector('.mask')
+const contentWrapper = document.querySelector('.content-wrapper')
+const latestArticle = document.querySelector('.latest-article')
+const readMore = document.querySelector('.read-more')
+const indexPage = document.querySelector('.index-page')
+
+const isHome = location.pathname === '/'
+if (latestArticle) {
+  latestArticle.style.display = isHome ? 'block' : 'none'
+  readMore.style.display = isHome ? 'block' : 'none'
+  indexPage.style.display = isHome ? 'none' : 'block'
+}
+
+const openMenu = () => {
+  menuContainer.classList.add('open')
+  menus.forEach(menu => {
+    menu.classList.add('animated', 'fadeInLeft')
+  })
+  mask.classList.add('open')
+  contentWrapper.classList.add('is-second')
+}
+
+const closeMenu = () => {
+  menuContainer.classList.remove('open')
+  menus.forEach(menu => {
+    menu.classList.remove('animated', 'fadeInLeft')
+  })
+  mask.classList.remove('open')
+  contentWrapper.classList.remove('is-second')
+}
+</script>
+  
+  </body>
+</html>

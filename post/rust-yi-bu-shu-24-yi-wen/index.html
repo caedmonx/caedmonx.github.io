@@ -1,0 +1,371 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Caedmon</title>
+<meta name="description" content="温故而知新" />
+<link rel="shortcut icon" href="https://caedmonx.github.io/favicon.ico?v=1669196159958">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.7.2/animate.min.css">
+
+<link rel="stylesheet" href="https://caedmonx.github.io/styles/main.css">
+
+
+
+  </head>
+  <body>
+    <div id="app" class="main px-4 flex flex-col lg:flex-row">
+      <div id="sidebar" class="sidebar-wrapper lg:static lg:w-1/4">
+  <div class="lg:sticky top-0">
+    <div class="sidebar-content">
+      <div class="flex lg:block p-4 lg:px-0 items-center fixed lg:static lg:block top-0 right-0 left-0 bg-white z-50">
+        <i class="ri-menu-2-line lg:mt-4 text-2xl cursor-pointer animated fadeIn" onclick="openMenu()"></i>
+        <a href="https://caedmonx.github.io">
+          <img class="animated fadeInLeft avatar rounded-lg mx-4 lg:mt-32 lg:mx-0 mt-0 lg:w-24 lg:h-24 w-12 w-12" src="https://caedmonx.github.io/images/avatar.png?v=1669196159958" alt="">
+        </a>
+        <h1 class="animated fadeInLeft lg:text-4xl font-extrabold lg:mt-8 mt-0 text-xl" style="animation-delay: 0.2s">Caedmon</h1>
+      </div>
+      
+        <div class="animated fadeInLeft" style="animation-delay: 0.4s">
+          <p class="my-4 text-gray-600 font-light hidden lg:block">
+            文章目录
+          </p>
+          <div class="toc-container hidden lg:block">
+            <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#executors-and-system-io">Executors and System IO</a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      
+    </div>
+  </div>
+</div>
+
+<div class="menu-container">
+  <i class="ri-arrow-left-line text-2xl cursor-pointer animated fadeIn close-menu-btn" onclick="closeMenu()"></i>
+  <div>
+    
+      
+        <a href="/" class="menu" style="animation-delay: 0s">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu" style="animation-delay: 0.2s">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu" style="animation-delay: 0.4s">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu" style="animation-delay: 0.6000000000000001s">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="site-footer">
+    <div class="py-4 text-gray-700">Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a></div>
+    <a class="rss" href="https://caedmonx.github.io/atom.xml" target="_blank">RSS</a>
+  </div>
+</div>
+<div class="mask" onclick="closeMenu()">
+</div>
+      <div class="content-wrapper py-32 lg:p-8 lg:w-3/4 post-detail animated fadeIn">
+        <h1 class="text-3xl font-bold lg:mt-16">Rust异步书2.4译文</h1>
+        <div class="text-sm text-gray-700 lg:my-8">
+          2022-08-16 / 6 min read
+        </div>
+        
+        <div class="post-content yue">
+          <h2 id="executors-and-system-io">Executors and System IO</h2>
+<p>In the previous section on <a href="https://rust-lang.github.io/async-book/02_execution/02_future.html">The <code>Future</code> Trait</a>, we discussed this example of a future that performed an asynchronous read on a socket:</p>
+<blockquote>
+<p>在关于future特征的上一节中，我们讨论了这个在套接字上执行异步读取的future示例：</p>
+</blockquote>
+<pre><code class="language-rust">pub struct SocketRead&lt;'a&gt; {
+    socket: &amp;'a Socket,
+}
+
+impl SimpleFuture for SocketRead&lt;'_&gt; {
+    type Output = Vec&lt;u8&gt;;
+
+    fn poll(&amp;mut self, wake: fn()) -&gt; Poll&lt;Self::Output&gt; {
+        if self.socket.has_data_to_read() {
+            // The socket has data -- read it into a buffer and return it.
+            Poll::Ready(self.socket.read_buf())
+        } else {
+            // The socket does not yet have data.
+            //
+            // Arrange for `wake` to be called once data is available.
+            // When data becomes available, `wake` will be called, and the
+            // user of this `Future` will know to call `poll` again and
+            // receive data.
+            self.socket.set_readable_callback(wake);
+            Poll::Pending
+        }
+    }
+}
+</code></pre>
+<p>This future will read available data on a socket, and if no data is available, it will yield to the executor, requesting that its task be awoken when the socket becomes readable again. However, it's not clear from this example how the <code>Socket</code> type is implemented, and in particular it isn't obvious how the <code>set_readable_callback</code> function works. How can we arrange for <code>wake()</code> to be called once the socket becomes readable? One option would be to have a thread that continually checks whether <code>socket</code> is readable, calling <code>wake()</code> when appropriate. However, this would be quite inefficient, requiring a separate thread for each blocked IO future. This would greatly reduce the efficiency of our async code.</p>
+<blockquote>
+<p>这个 future 将读取套接字上的可用数据，如果没有可用数据，它将让步给执行程序，请求在套接字再次可读时唤醒其任务。 但是，从这个例子中并不清楚 Socket 类型是如何实现的，尤其是 set_readable_callback 函数是如何工作的并不明显。 一旦套接字变得可读，我们如何安排 wake() 被调用？ 一种选择是让一个线程不断检查套接字是否可读，并在适当的时候调用wake()。 但是，这将是非常低效的，需要为每个阻塞的 IO future使用单独的线程。 这将大大降低我们异步代码的效率。</p>
+</blockquote>
+<p>In practice, this problem is solved through integration with an IO-aware system blocking primitive, such as <code>epoll</code> on Linux, <code>kqueue</code> on FreeBSD and Mac OS, IOCP on Windows, and <code>port</code>s on Fuchsia (all of which are exposed through the cross-platform Rust crate <a href="https://github.com/tokio-rs/mio"><code>mio</code></a>). These primitives all allow a thread to block on multiple asynchronous IO events, returning once one of the events completes. In practice, these APIs usually look something like this:</p>
+<blockquote>
+<p>在实践中，这个问题是通过与 IO 感知系统阻塞原语集成来解决的，例如 Linux 上的 epoll、FreeBSD 和 Mac OS 上的 kqueue、Windows 上的 IOCP 和 Fuchsia 上的端口（跨平台的 rust crate mio 提供了这些技术的封装)。 这些原语都允许线程阻塞多个异步 IO 事件，一旦其中一个事件完成就返回。 在实践中，这些 API 通常看起来像这样：</p>
+</blockquote>
+<pre><code class="language-rust">struct IoBlocker {
+    /* ... */
+}
+
+struct Event {
+    // An ID uniquely identifying the event that occurred and was listened for.
+    id: usize,
+
+    // A set of signals to wait for, or which occurred.
+    signals: Signals,
+}
+
+impl IoBlocker {
+    /// Create a new collection of asynchronous IO events to block on.
+    fn new() -&gt; Self { /* ... */ }
+
+    /// Express an interest in a particular IO event.
+    fn add_io_event_interest(
+        &amp;self,
+
+        /// The object on which the event will occur
+        io_object: &amp;IoObject,
+
+        /// A set of signals that may appear on the `io_object` for
+        /// which an event should be triggered, paired with
+        /// an ID to give to events that result from this interest.
+        event: Event,
+    ) { /* ... */ }
+
+    /// Block until one of the events occurs.
+    fn block(&amp;self) -&gt; Event { /* ... */ }
+}
+
+let mut io_blocker = IoBlocker::new();
+io_blocker.add_io_event_interest(
+    &amp;socket_1,
+    Event { id: 1, signals: READABLE },
+);
+io_blocker.add_io_event_interest(
+    &amp;socket_2,
+    Event { id: 2, signals: READABLE | WRITABLE },
+);
+let event = io_blocker.block();
+
+// prints e.g. &quot;Socket 1 is now READABLE&quot; if socket one became readable.
+println!(&quot;Socket {:?} is now {:?}&quot;, event.id, event.signals);
+</code></pre>
+<p>Futures executors can use these primitives to provide asynchronous IO objects such as sockets that can configure callbacks to be run when a particular IO event occurs. In the case of our <code>SocketRead</code> example above, the <code>Socket::set_readable_callback</code> function might look like the following pseudocode:</p>
+<blockquote>
+<p>Futures 执行器可以使用这些原语来提供异步 IO 对象，例如可以配置回调以在特定 IO 事件发生时运行的套接字。 在上面的 SocketRead 示例中，Socket::set_readable_callback 函数可能类似于以下伪代码：</p>
+</blockquote>
+<pre><code class="language-rust">impl Socket {
+    fn set_readable_callback(&amp;self, waker: Waker) {
+        // `local_executor` is a reference to the local executor.
+        // this could be provided at creation of the socket, but in practice
+        // many executor implementations pass it down through thread local
+        // storage for convenience.
+        let local_executor = self.local_executor;
+
+        // Unique ID for this IO object.
+        let id = self.id;
+
+        // Store the local waker in the executor's map so that it can be called
+        // once the IO event arrives.
+        local_executor.event_map.insert(id, waker);
+        local_executor.add_io_event_interest(
+            &amp;self.socket_file_descriptor,
+            Event { id, signals: READABLE },
+        );
+    }
+}
+</code></pre>
+<p>We can now have just one executor thread which can receive and dispatch any IO event to the appropriate <code>Waker</code>, which will wake up the corresponding task, allowing the executor to drive more tasks to completion before returning to check for more IO events (and the cycle continues...).</p>
+<blockquote>
+<p>我们现在可以只有一个执行器线程，它可以接收任何 IO 事件并将其分派给适当的 Waker，唤醒相应的任务，允许执行器在返回检查更多 IO 事件之前驱动更多任务完成（以及循环 继续...）。</p>
+</blockquote>
+
+        </div>
+
+        
+          <a class="animated fadeInUp p-2 items-center text-sm text-gray-700 border hover:bg-gray-300 leading-none rounded-full flex lg:inline-flex m-4 " href="https://caedmonx.github.io/tag/BjAQKjRro/">
+            <span class="flex-auto">Rust</span>
+          </a>
+        
+
+
+        <div class="flex justify-between py-8">
+          
+            <div class="prev-post">
+              <a href="https://caedmonx.github.io/post/rust-yi-bu-shu-3-yi-wen/">
+                <h3 class="post-title">
+                  <i class="ri-arrow-left-line"></i>
+                  Rust异步书3译文
+                </h3>
+              </a>
+            </div>
+          
+
+          
+            <div class="next-post">
+              <a href="https://caedmonx.github.io/post/rust-yi-bu-shu-23-yi-wen/">
+                <h3 class="post-title">
+                  Rust异步书2.3译文
+                  <i class="ri-arrow-right-line"></i>
+                </h3>
+              </a>
+            </div>
+          
+        </div>
+
+        
+          
+            <link rel="stylesheet" href="https://unpkg.com/gitalk/dist/gitalk.css">
+<script src="https://unpkg.com/gitalk/dist/gitalk.min.js"></script>
+
+<div id="gitalk-container"></div>
+
+<script>
+
+  var gitalk = new Gitalk({
+    clientID: 'c156a46b4028f9147223',
+    clientSecret: '3edfa6353ae2e8cb281297e7ffa7fa84a3e13041',
+    repo: 'caedmonx.github.io',
+    owner: 'caedmonx',
+    admin: ['caedmonx'],
+    id: (location.pathname).substring(0, 49),      // Ensure uniqueness and length less than 50
+    distractionFreeMode: false  // Facebook-like distraction free mode
+  })
+
+  gitalk.render('gitalk-container')
+
+</script>
+
+          
+
+          
+        
+
+      </div>
+    </div>
+
+    <script src="https://caedmonx.github.io/media/prism.js"></script>  
+<script>
+
+Prism.highlightAll()
+let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+// This should probably be throttled.
+// Especially because it triggers during smooth scrolling.
+// https://lodash.com/docs/4.17.10#throttle
+// You could do like...
+// window.addEventListener("scroll", () => {
+//    _.throttle(doThatStuff, 100);
+// });
+// Only not doing it here to keep this Pen dependency-free.
+
+window.addEventListener("scroll", event => {
+  let fromTop = window.scrollY;
+
+  mainNavLinks.forEach((link, index) => {
+    let section = document.getElementById(decodeURI(link.hash).substring(1));
+    let nextSection = null
+    if (mainNavLinks[index + 1]) {
+      nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+    }
+    if (section.offsetTop <= fromTop) {
+      if (nextSection) {
+        if (nextSection.offsetTop > fromTop) {
+          link.classList.add("current");
+        } else {
+          link.classList.remove("current");    
+        }
+      } else {
+        link.classList.add("current");
+      }
+    } else {
+      link.classList.remove("current");
+    }
+  });
+});
+
+
+document.addEventListener("DOMContentLoaded", function() {
+  var lazyImages = [].slice.call(document.querySelectorAll(".post-feature-image.lazy"));
+
+  if ("IntersectionObserver" in window) {
+    let lazyImageObserver = new IntersectionObserver(function(entries, observer) {
+      entries.forEach(function(entry) {
+        if (entry.isIntersecting) {
+          let lazyImage = entry.target
+          lazyImage.style.backgroundImage = `url(${lazyImage.dataset.bg})`
+          lazyImage.classList.remove("lazy")
+          lazyImageObserver.unobserve(lazyImage)
+        }
+      });
+    });
+
+    lazyImages.forEach(function(lazyImage) {
+      lazyImageObserver.observe(lazyImage)
+    })
+  } else {
+    // Possibly fall back to a more compatible method here
+  }
+});
+
+const menuContainer = document.querySelector('.menu-container')
+const menus = document.querySelectorAll('.menu-container .menu')
+const mask = document.querySelector('.mask')
+const contentWrapper = document.querySelector('.content-wrapper')
+const latestArticle = document.querySelector('.latest-article')
+const readMore = document.querySelector('.read-more')
+const indexPage = document.querySelector('.index-page')
+
+const isHome = location.pathname === '/'
+if (latestArticle) {
+  latestArticle.style.display = isHome ? 'block' : 'none'
+  readMore.style.display = isHome ? 'block' : 'none'
+  indexPage.style.display = isHome ? 'none' : 'block'
+}
+
+const openMenu = () => {
+  menuContainer.classList.add('open')
+  menus.forEach(menu => {
+    menu.classList.add('animated', 'fadeInLeft')
+  })
+  mask.classList.add('open')
+  contentWrapper.classList.add('is-second')
+}
+
+const closeMenu = () => {
+  menuContainer.classList.remove('open')
+  menus.forEach(menu => {
+    menu.classList.remove('animated', 'fadeInLeft')
+  })
+  mask.classList.remove('open')
+  contentWrapper.classList.remove('is-second')
+}
+</script>
+  
+  </body>
+</html>
